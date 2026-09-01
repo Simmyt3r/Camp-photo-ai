@@ -1,53 +1,72 @@
-# PyInstaller spec file for CampPhoto AI (spec section 36).
+# PyInstaller spec file for CampPhoto AI.
 #
-# Builds TWO executables from one spec, matching the app's two real
-# entry points:
-#   - CampPhotoAI       (app/main.py)  -- the GUI
-#   - camp-photo-ai-cli (app/cli.py)   -- the CLI
+# Builds TWO executables:
+#   - CampPhotoAI       (app/main.py) -- GUI
+#   - camp-photo-ai-cli (app/cli.py)  -- CLI
 #
 # Run from the project root:
-#   pyinstaller pyinstaller.spec --noconfirm
-#
-# Output goes to dist/CampPhotoAI/ and dist/camp-photo-ai-cli/ (--onedir
-# mode -- see docs/INSTALLATION.md for why --onefile is deliberately NOT
-# used here: this app's dependencies, especially onnxruntime and
-# insightface, are large and slow to self-extract on every launch).
-#
-# IMPORTANT: PyInstaller does not cross-compile. Building on Linux
-# produces a Linux binary, not a Windows .exe. This spec file has been
-# validated by actually building BOTH targets on Linux in development --
-# not just checked by inspection -- and running the resulting binaries.
-# That process found and fixed a real bug: app/config/settings.py computed
-# its base directory from Path(__file__), which resolves to a meaningless
-# location inside a frozen bundle, so every default path (database,
-# output, models, logs) was wrong under a frozen build until fixed (see
-# app/config/settings.py::_detect_app_root() and app/bootstrap.py). The
-# real Windows .exe still needs to be built BY RUNNING THIS ON WINDOWS --
-# Linux testing validates the bundling and the app's own path-handling
-# logic, not Windows-specific behavior. See docs/INSTALLATION.md.
+#   pyinstaller pyinstaller.spec --noconfirm --clean
 
-import sys
 from pathlib import Path
 
-from PyInstaller.utils.hooks import collect_all
+from PyInstaller.utils.hooks import (
+    collect_all,
+    collect_data_files,
+    collect_dynamic_libs,
+)
 
 block_cipher = None
 PROJECT_ROOT = Path(SPECPATH)
 
-# opencv, onnxruntime, and insightface have no built-in PyInstaller hook
-# (unlike PySide6/numpy/sqlalchemy, which do) -- collect_all() pulls in
-# their binaries, data files, and hidden submodule imports that
-# PyInstaller's static bytecode analysis alone would miss. insightface
-# in particular does internal dynamic imports based on model pack names,
-# which static analysis cannot see coming.
+
+# ---------------------------------------------------------------------------
+# Dependency collection
+# ---------------------------------------------------------------------------
+#
+# IMPORTANT:
+# Do NOT use collect_all("onnxruntime").
+#
+# collect_all() also returns every discovered hidden import. With the current
+# ONNX Runtime/ONNX packages this causes PyInstaller to walk optional tooling
+# such as:
+#
+#   onnx.reference
+#   onnxruntime.tools
+#   onnxruntime.transformers
+#
+# Some of those modules are not required by InsightFace inference and one of
+# them causes PyInstaller's isolated dependency scanner to crash on Windows
+# with exit code 3221225477.
+#
+# We only collect the ONNX Runtime data and native DLLs that the application
+# actually needs. The normal import of onnxruntime is handled by PyInstaller's
+# dependency analysis.
+#
+
 collected_binaries = []
 collected_datas = []
 collected_hiddenimports = []
-for pkg in ("cv2", "onnxruntime", "insightface"):
-    b, d, h = collect_all(pkg)
-    collected_binaries += b
-    collected_datas += d
-    collected_hiddenimports += h
+
+
+# OpenCV: collect its native DLLs/data and hidden modules.
+b, d, h = collect_all("cv2")
+collected_binaries += b
+collected_datas += d
+collected_hiddenimports += h
+
+
+# InsightFace: it performs dynamic imports for model_zoo and related modules,
+# so retain its normal collect_all() handling.
+b, d, h = collect_all("insightface")
+collected_binaries += b
+collected_datas += d
+collected_hiddenimports += h
+
+
+# ONNX Runtime: collect ONLY data files and native libraries.
+collected_binaries += collect_dynamic_libs("onnxruntime")
+collected_datas += collect_data_files("onnxruntime")
+
 
 COMMON_HIDDEN_IMPORTS = collected_hiddenimports + [
     "sqlalchemy.dialects.sqlite",
@@ -55,12 +74,13 @@ COMMON_HIDDEN_IMPORTS = collected_hiddenimports + [
     "imagehash",
 ]
 
+
 COMMON_EXCLUDES = [
-    # Reduces bundle size: these are pulled in transitively by some
-    # dependencies' optional code paths but nothing in this app uses
-    # them. Remove from this list if a build ever fails looking for one.
+    # Optional/test-only packages.
     "matplotlib.tests",
     "numpy.tests",
+
+    # Qt modules not used by this application.
     "PySide6.QtWebEngineCore",
     "PySide6.QtWebEngineWidgets",
     "PySide6.Qt3DAnimation",
@@ -69,9 +89,28 @@ COMMON_EXCLUDES = [
     "PySide6.Qt3DInput",
     "PySide6.Qt3DLogic",
     "PySide6.Qt3DRender",
+
+    # ONNX Runtime optional tooling. The application uses ONNX Runtime for
+    # inference, not model conversion/optimization tooling.
+    "onnxruntime.tools",
+    "onnxruntime.transformers",
+
+    # ONNX reference implementation is not required by InsightFace inference.
+    # Excluding it also prevents PyInstaller from importing the problematic
+    # onnx.reference package during binary dependency analysis.
+    "onnx.reference",
+    "onnx.reference.ops",
+    "onnx.reference.ops.aionnxml",
+    "onnx.reference.ops.experimental",
+    "onnx.reference.ops.aionnx_preview",
+    "onnx.reference.ops.aionnx_preview_training",
+    "onnx.reference.ops_optimized",
 ]
 
-# --- GUI executable ---------------------------------------------------
+
+# ---------------------------------------------------------------------------
+# GUI executable
+# ---------------------------------------------------------------------------
 
 gui_analysis = Analysis(
     [str(PROJECT_ROOT / "app" / "main.py")],
@@ -84,7 +123,13 @@ gui_analysis = Analysis(
     noarchive=False,
     cipher=block_cipher,
 )
-gui_pyz = PYZ(gui_analysis.pure, gui_analysis.zipped_data, cipher=block_cipher)
+
+gui_pyz = PYZ(
+    gui_analysis.pure,
+    gui_analysis.zipped_data,
+    cipher=block_cipher,
+)
+
 gui_exe = EXE(
     gui_pyz,
     gui_analysis.scripts,
@@ -93,12 +138,11 @@ gui_exe = EXE(
     name="CampPhotoAI",
     debug=False,
     strip=False,
-    upx=False,  # UPX compression saves space but has caused false-positive
-                # antivirus flags on PyInstaller binaries before -- not
-                # worth it for a first distributable.
-    console=False,  # no terminal window behind the GUI
-    icon=None,  # add an .ico here once one exists -- see docs/INSTALLATION.md
+    upx=False,
+    console=False,
+    icon=None,
 )
+
 gui_collect = COLLECT(
     gui_exe,
     gui_analysis.binaries,
@@ -109,7 +153,10 @@ gui_collect = COLLECT(
     name="CampPhotoAI",
 )
 
-# --- CLI executable -----------------------------------------------------
+
+# ---------------------------------------------------------------------------
+# CLI executable
+# ---------------------------------------------------------------------------
 
 cli_analysis = Analysis(
     [str(PROJECT_ROOT / "app" / "cli.py")],
@@ -118,15 +165,19 @@ cli_analysis = Analysis(
     datas=collected_datas,
     hiddenimports=COMMON_HIDDEN_IMPORTS + ["click"],
     hookspath=[],
-    excludes=COMMON_EXCLUDES + ["PySide6"],  # the CLI never imports app.ui, but
-                                               # exclude explicitly in case a
-                                               # future change adds an accidental
-                                               # import -- keeps the CLI build
-                                               # from silently bloating with Qt.
+    excludes=COMMON_EXCLUDES + [
+        "PySide6",
+    ],
     noarchive=False,
     cipher=block_cipher,
 )
-cli_pyz = PYZ(cli_analysis.pure, cli_analysis.zipped_data, cipher=block_cipher)
+
+cli_pyz = PYZ(
+    cli_analysis.pure,
+    cli_analysis.zipped_data,
+    cipher=block_cipher,
+)
+
 cli_exe = EXE(
     cli_pyz,
     cli_analysis.scripts,
@@ -136,9 +187,10 @@ cli_exe = EXE(
     debug=False,
     strip=False,
     upx=False,
-    console=True,  # CLI needs its terminal output
+    console=True,
     icon=None,
 )
+
 cli_collect = COLLECT(
     cli_exe,
     cli_analysis.binaries,
