@@ -1,0 +1,29 @@
+# CampPhoto AI -- pinned dependencies (Python 3.11+)
+# Install GPU support by swapping onnxruntime -> onnxruntime-gpu (see docs/PRIVACY.md
+# and app/utilities/hardware.py for how the app detects and falls back automatically).
+
+# Core
+SQLAlchemy==2.0.32
+
+# Computer vision / ML
+opencv-python==4.10.0.84
+numpy==1.26.4
+onnxruntime==1.18.1
+insightface==0.7.3
+Pillow==10.4.0
+imagehash==4.3.1
+scikit-learn==1.5.1
+matplotlib==3.9.2
+
+# Desktop GUI
+PySide6==6.7.2
+
+# CLI
+click==8.1.7
+
+# Hardware / system info
+psutil==6.0.0
+
+# Testing
+pytest==8.3.2
+pytest-benchmark==4.0.0

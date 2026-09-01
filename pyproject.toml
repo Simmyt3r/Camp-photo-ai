@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "camp-photo-ai"
+version = "0.1.0"
+description = "AI-assisted camp photography management and automated face-based photo sorting"
+requires-python = ">=3.11"
+authors = [{ name = "Silabs (Simeon's Laboratories and Co Technologies Ltd)" }]
+# Pinned versions live in requirements.txt (source of truth for reproducible installs).
+dependencies = []
+
+[project.scripts]
+camp-photo-ai = "app.cli:cli"
+
+[tool.setuptools.packages.find]
+include = ["app*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
