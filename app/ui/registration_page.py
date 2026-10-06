@@ -193,8 +193,20 @@ class RegistrationPage(QWidget):
 
         self._worker = RegistrationWorker(self.context.embedding_service, list(self._pending_photos))
         self._worker.result_ready.connect(self._on_registration_results)
+        self._worker.model_progress.connect(self._on_model_progress)
         self._worker.failed.connect(self._on_registration_failed)
         self._worker.start()
+
+    def _on_model_progress(self, downloaded: int, total, message: str) -> None:
+        if total and total > 1:
+            downloaded_mb = downloaded / (1024 * 1024)
+            total_mb = total / (1024 * 1024)
+            percent = int(downloaded * 100 / total)
+            self.status_label.setText(
+                f"{message} {downloaded_mb:.1f}/{total_mb:.1f} MB ({percent}%)"
+            )
+        else:
+            self.status_label.setText(message)
 
     def _on_registration_failed(self, message: str) -> None:
         self.register_btn.setEnabled(True)

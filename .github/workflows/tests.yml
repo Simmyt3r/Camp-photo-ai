@@ -30,7 +30,7 @@ jobs:
       - name: Install test dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install SQLAlchemy numpy Pillow imagehash psutil click pytest pytest-benchmark
+          pip install SQLAlchemy==2.0.32 numpy==1.26.4 Pillow==10.4.0 imagehash==4.3.1 psutil==6.0.0 click==8.1.7 pytest==8.3.2 pytest-benchmark==4.0.0 opencv-python-headless==4.10.0.84
 
       - name: Syntax check
         run: python -m py_compile $(find app tests -name "*.py")

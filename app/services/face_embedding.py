@@ -32,6 +32,15 @@ class FaceEmbeddingService:
     def __init__(self, provider: str = "CPUExecutionProvider", models_dir: str | None = None):
         self._provider = provider
         self._models_dir = models_dir
+        self._model_progress_callback = None
+
+    def set_model_progress_callback(self, callback) -> None:
+        """Set an optional callback(downloaded_bytes, total_bytes, message).
+
+        Desktop workers use this to show first-run model download progress.
+        It is intentionally optional so CLI/tests keep the same API surface.
+        """
+        self._model_progress_callback = callback
 
     def embed_image(self, image: np.ndarray) -> list[tuple[np.ndarray, float, tuple[float, float, float, float]]]:
         """Runs detection+embedding on a full image. Returns a list of
@@ -41,7 +50,8 @@ class FaceEmbeddingService:
         kept alongside the embedding so callers (e.g. the batch pipeline)
         can store it for later display without a second detection pass."""
         app = get_face_analysis_app(
-            provider=self._provider, model_name=EMBEDDING_MODEL_NAME, models_dir=self._models_dir
+            provider=self._provider, model_name=EMBEDDING_MODEL_NAME, models_dir=self._models_dir,
+            progress_callback=self._model_progress_callback,
         )
         faces = app.get(image)
         return [
@@ -64,7 +74,8 @@ class FaceEmbeddingService:
         image in a batch doesn't pay model-load latency (section 11:
         "Model warm-up")."""
         app = get_face_analysis_app(
-            provider=self._provider, model_name=EMBEDDING_MODEL_NAME, models_dir=self._models_dir
+            provider=self._provider, model_name=EMBEDDING_MODEL_NAME, models_dir=self._models_dir,
+            progress_callback=self._model_progress_callback,
         )
         dummy = np.zeros((640, 640, 3), dtype=np.uint8)
         app.get(dummy)

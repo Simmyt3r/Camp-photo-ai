@@ -1,0 +1,44 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Runtime data
+data/settings.json
+data/*.db
+data/*.db-*
+data/input/
+data/captures/
+logs/*
+!logs/.gitkeep
+output/*
+!output/.gitkeep
+
+# Downloaded AI models and temporary archives
+models/*
+!models/.gitkeep
+*.download
+*.invalid.zip
+
+# Builds
+build/
+dist/
+release/
+*.spec.bak
+
+# Local documents / scratch files
+*.docx
