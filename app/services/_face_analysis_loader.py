@@ -100,7 +100,10 @@ def _model_is_complete(model_dir: Path) -> bool:
     if not model_dir.is_dir():
         return False
 
-    return all((model_dir / name).is_file() for name in BUFFALO_L_REQUIRED_FILES)
+    return all(
+        (model_dir / name).is_file() and (model_dir / name).stat().st_size > 0
+        for name in BUFFALO_L_REQUIRED_FILES
+    )
 
 
 def _find_existing_model_dir(models_dir: str | None, model_name: str) -> Path | None:
