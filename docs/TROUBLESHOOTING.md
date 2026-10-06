@@ -15,13 +15,20 @@ system-managed Python. Use `scripts/setup_dev_env.sh` /
 `docs/INSTALLATION.md`) -- don't `pip install --break-system-packages`
 outside of a throwaway/CI environment.
 
-**The model download hangs or fails**
-This is the one network call the app makes (see `docs/PRIVACY.md`) --
-InsightFace downloading its `buffalo_l` pack (~350MB) on first
-`register`/`process`. Check your internet connection and any
-firewall/proxy that might block the download host. There's currently no
-built-in way to resume a partial download or point at a mirror -- if it
-fails partway, delete the partial `models/` contents and try again.
+**The Buffalo model download stays at 0 KB, hangs, or fails**
+Upgrade to a build containing the repaired custom model loader. Older
+Windows builds delegated the first download to InsightFace's console
+downloader, which could appear stuck at 0 KB in a windowed PyInstaller
+application. Current builds show download progress in the GUI, use the
+official InsightFace `model-zoo` asset, validate its SHA-256 checksum,
+and remove partial downloads automatically.
+
+If it still cannot download, check that GitHub release downloads are not
+blocked by a firewall/proxy/antivirus and that there is enough free disk
+space. As a manual fallback, download the official `buffalo_l.zip`,
+extract it, and put its five `.onnx` files in
+`models/buffalo_l/`. Then restart the app. See
+`docs/INSTALLATION.md` for the exact layout and model-licence notice.
 
 ## Running the app
 
