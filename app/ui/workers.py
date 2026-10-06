@@ -28,6 +28,7 @@ class ProcessingWorker(QThread):
     run safely on the main thread even though emit() happens here."""
 
     progress = Signal(object, str)  # BatchStats snapshot, current filename
+    model_progress = Signal(int, object, str)  # downloaded bytes, total bytes|None, message
     finished_ok = Signal(object)    # final BatchStats
     failed = Signal(str)
 
@@ -43,6 +44,9 @@ class ProcessingWorker(QThread):
         self._participant_filter = participant_filter
 
     def run(self) -> None:
+        self._embedding_service.set_model_progress_callback(
+            lambda downloaded, total, message: self.model_progress.emit(downloaded, total, message)
+        )
         try:
             with get_session() as session:
                 stats = run_batch(
@@ -55,6 +59,8 @@ class ProcessingWorker(QThread):
             self.finished_ok.emit(stats)
         except Exception as exc:  # surface any failure to the UI instead of dying silently
             self.failed.emit(str(exc))
+        finally:
+            self._embedding_service.set_model_progress_callback(None)
 
 
 @dataclass
@@ -72,6 +78,7 @@ class RegistrationWorker(QThread):
     use, which would otherwise freeze the registration screen."""
 
     result_ready = Signal(list)  # list[ReferencePhotoResult]
+    model_progress = Signal(int, object, str)  # downloaded bytes, total bytes|None, message
     failed = Signal(str)
 
     def __init__(self, embedding_service: FaceEmbeddingService, photo_paths: list[Path], parent=None):
@@ -85,6 +92,9 @@ class RegistrationWorker(QThread):
         from app.services.image_processing import encode_thumbnail_jpeg
 
         results: list[ReferencePhotoResult] = []
+        self._embedding_service.set_model_progress_callback(
+            lambda downloaded, total, message: self.model_progress.emit(downloaded, total, message)
+        )
         try:
             for path in self._photo_paths:
                 image = cv2.imread(str(path))
@@ -106,3 +116,5 @@ class RegistrationWorker(QThread):
             self.result_ready.emit(results)
         except Exception as exc:
             self.failed.emit(str(exc))
+        finally:
+            self._embedding_service.set_model_progress_callback(None)
