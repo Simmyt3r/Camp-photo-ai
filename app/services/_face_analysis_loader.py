@@ -299,7 +299,7 @@ def _download_buffalo_l(model_dir: Path, progress_callback: ModelProgressCallbac
             logger.warning("Could not remove downloaded model archive: %s", zip_path)
         return model_dir
 
-    except Exception:
+    except Exception as exc:
         logger.exception("Failed to download/install buffalo_l.")
 
         try:
@@ -314,7 +314,12 @@ def _download_buffalo_l(model_dir: Path, progress_callback: ModelProgressCallbac
         except OSError:
             pass
 
-        raise
+        raise RuntimeError(
+            "Could not download or install the buffalo_l face model. "
+            "Check your internet connection, firewall/antivirus, and free disk space. "
+            f"Manual fallback: download {BUFFALO_L_URL} in a browser, extract it, "
+            f"and place the five .onnx files inside: {model_dir}"
+        ) from exc
 
     finally:
         shutil.rmtree(temp_extract, ignore_errors=True)
