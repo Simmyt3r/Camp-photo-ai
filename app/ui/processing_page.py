@@ -91,11 +91,27 @@ class ProcessingPage(QWidget):
             self.context.embedding_service, resume=True,
         )
         self._worker.progress.connect(self._on_progress)
+        self._worker.model_progress.connect(self._on_model_progress)
         self._worker.finished_ok.connect(self._on_finished)
         self._worker.failed.connect(self._on_failed)
         self._worker.start()
 
+    def _on_model_progress(self, downloaded: int, total, message: str) -> None:
+        if total and total > 1:
+            percent = int(downloaded * 100 / total)
+            downloaded_mb = downloaded / (1024 * 1024)
+            total_mb = total / (1024 * 1024)
+            self.progress_bar.setRange(0, 100)
+            self.progress_bar.setValue(percent)
+            self.stats_label.setText(
+                f"{message} {downloaded_mb:.1f}/{total_mb:.1f} MB ({percent}%)"
+            )
+        else:
+            self.progress_bar.setRange(0, 0)
+            self.stats_label.setText(message)
+
     def _on_progress(self, stats, filename: str) -> None:
+        self.progress_bar.setRange(0, 100)
         if stats.total_photos > 0:
             self.progress_bar.setValue(int(100 * stats.processed / stats.total_photos))
         self.stats_label.setText(
