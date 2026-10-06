@@ -65,6 +65,11 @@ jobs:
           python -c "import PySide6; print('PySide6 installed')"
 
 
+      - name: Syntax check
+        shell: pwsh
+        run: |
+          python -m compileall -q app tests
+
       - name: Run tests
         shell: pwsh
         run: |
