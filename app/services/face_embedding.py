@@ -74,7 +74,8 @@ class FaceEmbeddingService:
         image in a batch doesn't pay model-load latency (section 11:
         "Model warm-up")."""
         app = get_face_analysis_app(
-            provider=self._provider, model_name=EMBEDDING_MODEL_NAME, models_dir=self._models_dir
+            provider=self._provider, model_name=EMBEDDING_MODEL_NAME, models_dir=self._models_dir,
+            progress_callback=self._model_progress_callback,
         )
         dummy = np.zeros((640, 640, 3), dtype=np.uint8)
         app.get(dummy)
