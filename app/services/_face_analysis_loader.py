@@ -25,6 +25,7 @@ import urllib.request
 import zipfile
 from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
+from typing import Callable
 
 logger = logging.getLogger("camp_photo_ai.face_model")
 
@@ -61,6 +62,17 @@ class _NullWriter(io.TextIOBase):
 
 
 _NULL_WRITER = _NullWriter()
+
+ModelProgressCallback = Callable[[int, int | None, str], None]
+
+
+def _emit_progress(callback: ModelProgressCallback | None, downloaded: int, total: int | None, message: str) -> None:
+    if callback is None:
+        return
+    try:
+        callback(downloaded, total, message)
+    except Exception:
+        logger.debug("Model progress callback failed", exc_info=True)
 
 
 def _safe_stream(stream):
@@ -149,7 +161,7 @@ def _remove_incomplete_model_files(model_root: Path) -> None:
             logger.exception("Could not remove incomplete model directory: %s", model_root)
 
 
-def _download_buffalo_l(model_dir: Path) -> Path:
+def _download_buffalo_l(model_dir: Path, progress_callback: ModelProgressCallback | None = None) -> Path:
     """
     Download and extract buffalo_l safely.
 
@@ -168,6 +180,7 @@ def _download_buffalo_l(model_dir: Path) -> Path:
 
     logger.info("Downloading InsightFace model pack %s ...", model_dir.name)
     logger.info("Model download URL: %s", BUFFALO_L_URL)
+    _emit_progress(progress_callback, 0, None, "Connecting to InsightFace model server...")
 
     try:
         request = urllib.request.Request(
@@ -192,6 +205,12 @@ def _download_buffalo_l(model_dir: Path) -> Path:
 
                 output.write(chunk)
                 downloaded += len(chunk)
+                _emit_progress(
+                    progress_callback,
+                    downloaded,
+                    total or None,
+                    "Downloading buffalo_l face model...",
+                )
 
                 if total:
                     percent = downloaded * 100 // total
@@ -208,6 +227,13 @@ def _download_buffalo_l(model_dir: Path) -> Path:
                 "The buffalo_l download was incomplete or empty. "
                 "Please check the computer's internet connection and try again."
             )
+
+        _emit_progress(
+            progress_callback,
+            temp_zip.stat().st_size,
+            temp_zip.stat().st_size,
+            "Verifying buffalo_l download...",
+        )
 
         digest = hashlib.sha256()
         with open(temp_zip, "rb") as downloaded_file:
@@ -269,6 +295,7 @@ def _download_buffalo_l(model_dir: Path) -> Path:
             raise RuntimeError("buffalo_l installation failed validation.")
 
         logger.info("buffalo_l model installed successfully at %s", model_dir)
+        _emit_progress(progress_callback, 1, 1, "buffalo_l model installed successfully.")
         try:
             zip_path.unlink(missing_ok=True)
         except OSError:
@@ -299,6 +326,7 @@ def _download_buffalo_l(model_dir: Path) -> Path:
 def _ensure_model_available(
     models_dir: str | None,
     model_name: str,
+    progress_callback: ModelProgressCallback | None = None,
 ) -> Path | None:
     """
     Ensure the requested model is available.
@@ -319,7 +347,7 @@ def _ensure_model_available(
     # Remove any 0-byte/partial archive left by a previous failed attempt.
     _remove_incomplete_model_files(model_dir)
 
-    return _download_buffalo_l(model_dir)
+    return _download_buffalo_l(model_dir, progress_callback=progress_callback)
 
 
 def get_face_analysis_app(
@@ -327,6 +355,7 @@ def get_face_analysis_app(
     model_name: str = "buffalo_l",
     det_size: tuple[int, int] = (640, 640),
     models_dir: str | None = None,
+    progress_callback: ModelProgressCallback | None = None,
 ):
     key = (provider, model_name, models_dir or "")
 
@@ -343,7 +372,9 @@ def get_face_analysis_app(
                 "face detection/embedding."
             ) from exc
 
-        model_dir = _ensure_model_available(models_dir, model_name)
+        model_dir = _ensure_model_available(
+            models_dir, model_name, progress_callback=progress_callback
+        )
 
         if model_name == "buffalo_l" and model_dir is None:
             raise RuntimeError(
@@ -373,6 +404,7 @@ def get_face_analysis_app(
             provider,
             insightface_root,
         )
+        _emit_progress(progress_callback, 1, 1, "Loading face recognition model...")
 
         # PyInstaller windowed applications can have sys.stdout/sys.stderr=None.
         # InsightFace/tqdm and some dependency code may call .write() on them.
@@ -406,5 +438,6 @@ def get_face_analysis_app(
 
         _apps[key] = app
         logger.info("FaceAnalysis model ready.")
+        _emit_progress(progress_callback, 1, 1, "Face model ready.")
 
         return app
