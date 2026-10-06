@@ -41,16 +41,44 @@ pip install --upgrade pip
 pip install -r requirements.txt
 ```
 
-### First run: the model download
+### First use: the face model download
 
-The first time you run `register`, `process`, or open the Registration/
-Processing screen, InsightFace downloads its `buffalo_l` model pack
-(~350MB) into `models/`. This is the **only** network call this app
-makes (see `docs/PRIVACY.md`) -- after that, everything runs fully
-offline. If you're behind a restrictive firewall, this download needs
-to succeed once before the app is usable; there's currently no way to
-manually pre-seed the model files short of copying an existing
-`models/` folder from another working install.
+The first time face recognition is actually needed (Register or Process),
+CampPhoto AI downloads InsightFace's official `buffalo_l` package from
+the current `model-zoo` release. The archive is about 275 MB and expands
+to roughly 326 MB. The GUI now shows downloaded MB and percentage instead
+of appearing to sit at 0 KB.
+
+CampPhoto AI owns this download rather than relying on InsightFace's
+console downloader. The app downloads to a temporary file, rejects empty
+or tiny downloads, validates the official SHA-256 checksum, extracts only
+after validation, and removes the archive after installation. A failed
+attempt is cleaned up so a zero-byte file cannot poison every later run.
+
+The installed model lives at:
+
+```text
+models/
+└── buffalo_l/
+    ├── det_10g.onnx
+    ├── 1k3d68.onnx
+    ├── 2d106det.onnx
+    ├── genderage.onnx
+    └── w600k_r50.onnx
+```
+
+Older CampPhoto AI builds accidentally used `models/models/buffalo_l/`.
+That location is still detected for backward compatibility.
+
+If automatic download is blocked by a firewall, proxy, antivirus, or an
+unstable connection, download `buffalo_l.zip` from the official
+InsightFace model-zoo release in a browser, extract it, and place the five
+`.onnx` files in `models/buffalo_l/`. Restart CampPhoto AI afterward.
+
+> **Model licence:** InsightFace states that its pretrained model-zoo
+> models are for non-commercial research use. Commercial deployment needs
+> an appropriately licensed model/arrangement. CampPhoto AI's code licence
+> does not grant commercial rights to third-party pretrained weights.
 
 ### GPU setup (optional)
 
