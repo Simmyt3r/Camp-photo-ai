@@ -13,6 +13,7 @@ to InsightFace's model licensing terms.
 """
 from __future__ import annotations
 
+import hashlib
 import io
 import logging
 import os
@@ -31,8 +32,11 @@ _lock = threading.Lock()
 _apps: dict[tuple, object] = {}
 
 BUFFALO_L_URL = (
-    "https://github.com/deepinsight/insightface/releases/download/v0.7/buffalo_l.zip"
+    "https://github.com/deepinsight/insightface/releases/download/model-zoo/buffalo_l.zip"
 )
+
+# Official checksum published with the InsightFace model-zoo release.
+BUFFALO_L_SHA256 = "80ffe37d8a5940d59a7384c201a2a38d4741f2f3c51eef46ebb28218a7b0ca2f"
 
 BUFFALO_L_REQUIRED_FILES = {
     "det_10g.onnx",
@@ -174,7 +178,7 @@ def _download_buffalo_l(model_dir: Path) -> Path:
             },
         )
 
-        with urllib.request.urlopen(request, timeout=120) as response, open(
+        with urllib.request.urlopen(request, timeout=60) as response, open(
             temp_zip, "wb"
         ) as output:
             content_length = response.headers.get("Content-Length")
@@ -203,6 +207,18 @@ def _download_buffalo_l(model_dir: Path) -> Path:
             raise RuntimeError(
                 "The buffalo_l download was incomplete or empty. "
                 "Please check the computer's internet connection and try again."
+            )
+
+        digest = hashlib.sha256()
+        with open(temp_zip, "rb") as downloaded_file:
+            for block in iter(lambda: downloaded_file.read(1024 * 1024), b""):
+                digest.update(block)
+        actual_sha256 = digest.hexdigest()
+        if actual_sha256 != BUFFALO_L_SHA256:
+            raise RuntimeError(
+                "The buffalo_l download failed checksum verification. "
+                f"Expected {BUFFALO_L_SHA256}, got {actual_sha256}. "
+                "Delete the partial download and try again."
             )
 
         os.replace(temp_zip, zip_path)
@@ -253,6 +269,10 @@ def _download_buffalo_l(model_dir: Path) -> Path:
             raise RuntimeError("buffalo_l installation failed validation.")
 
         logger.info("buffalo_l model installed successfully at %s", model_dir)
+        try:
+            zip_path.unlink(missing_ok=True)
+        except OSError:
+            logger.warning("Could not remove downloaded model archive: %s", zip_path)
         return model_dir
 
     except Exception:
@@ -387,55 +407,4 @@ def get_face_analysis_app(
         _apps[key] = app
         logger.info("FaceAnalysis model ready.")
 
-        return app"""
-Internal shared loader for InsightFace's FaceAnalysis model.
-
-InsightFace's `buffalo_l` pack performs detection and embedding together
-in a single forward pass (its recognition model is bundled with its
-detector). FaceDetectionService and FaceEmbeddingService are kept as
-separate services for clean architecture and future model-swap
-flexibility (section 32), but both call through here so they share one
-loaded model instance instead of each loading their own copy into
-memory. Import of insightface itself is lazy -- this module is safe to
-import even when insightface isn't installed; only calling
-get_face_analysis_app() requires it.
-"""
-from __future__ import annotations
-
-import logging
-import threading
-
-logger = logging.getLogger("camp_photo_ai.face_model")
-
-_lock = threading.Lock()
-_apps: dict[tuple, object] = {}
-
-
-def get_face_analysis_app(
-    provider: str = "CPUExecutionProvider",
-    model_name: str = "buffalo_l",
-    det_size: tuple[int, int] = (640, 640),
-    models_dir: str | None = None,
-):
-    key = (provider, model_name, models_dir or "")
-    with _lock:
-        if key not in _apps:
-            try:
-                from insightface.app import FaceAnalysis
-            except ImportError as exc:
-                raise RuntimeError(
-                    "insightface is not installed. Run `pip install insightface "
-                    "onnxruntime` (or `onnxruntime-gpu` for GPU mode) to enable "
-                    "face detection/embedding, then re-run this command."
-                ) from exc
-
-            kwargs = {"name": model_name, "providers": [provider]}
-            if models_dir:
-                kwargs["root"] = models_dir  # keeps model weights inside the project (models/)
-
-            logger.info("Loading FaceAnalysis model=%s provider=%s ...", model_name, provider)
-            app = FaceAnalysis(**kwargs)
-            app.prepare(ctx_id=0 if provider != "CPUExecutionProvider" else -1, det_size=det_size)
-            _apps[key] = app
-            logger.info("FaceAnalysis model ready.")
-        return _apps[key]
+        return app
