@@ -81,22 +81,19 @@ def _safe_stream(stream):
 
 
 def _get_model_root(models_dir: str | None, model_name: str) -> Path:
-    """
-    InsightFace expects:
+    """Return the concrete model package directory.
 
-        <root>/models/<model_name>/
+    CampPhoto AI's settings.models_dir is the visible `models/` folder, so a
+    normal install stores buffalo_l at `models/buffalo_l/`. InsightFace
+    itself expects its root one level above that models folder; the loader
+    derives that root later when constructing FaceAnalysis.
 
-    When models_dir is supplied by CampPhoto AI it represents the application
-    models directory, so the actual model directory becomes:
-
-        <models_dir>/models/<model_name>/
+    _find_existing_model_dir() still recognizes the older accidental
+    `models/models/buffalo_l/` layout so existing installs remain usable.
     """
     if models_dir:
-        root = Path(models_dir).expanduser().resolve()
-    else:
-        root = Path.home() / ".insightface"
-
-    return root / "models" / model_name
+        return Path(models_dir).expanduser().resolve() / model_name
+    return Path.home() / ".insightface" / "models" / model_name
 
 
 def _model_is_complete(model_dir: Path) -> bool:
