@@ -65,6 +65,11 @@ jobs:
           python -c "import PySide6; print('PySide6 installed')"
 
 
+      - name: Validate branding assets
+        shell: pwsh
+        run: |
+          python -c "from PIL import Image; Image.open('assets/campphoto_logo.png').verify(); Image.open('assets/campphoto_logo.ico').verify(); print('Branding assets verified')"
+
       - name: Syntax check
         shell: pwsh
         run: |
