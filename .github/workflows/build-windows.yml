@@ -160,6 +160,19 @@ jobs:
             }
           }
 
+          $notice = @(
+            "CampPhoto AI build-validation model bundle",
+            "Model: InsightFace buffalo_l",
+            "Source: https://github.com/deepinsight/insightface/releases/download/model-zoo/buffalo_l.zip",
+            "SHA-256: 80ffe37d8a5940d59a7384c201a2a38d4741f2f3c51eef46ebb28218a7b0ca2f",
+            "Purpose: current product build/validation phase",
+            "Note: third-party pretrained model rights are separate from the Camp Photo AI code licence."
+          ) -join [Environment]::NewLine
+
+          foreach ($target in @("dist/CampPhotoAI", "dist/camp-photo-ai-cli")) {
+            Set-Content -Path (Join-Path $target "MODEL_SOURCE.txt") -Value $notice -Encoding UTF8
+          }
+
           Write-Host "buffalo_l is bundled into both Windows applications."
 
 
