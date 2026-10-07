@@ -76,7 +76,6 @@ class RegistrationPage(QWidget):
         self.consent_checkbox = QCheckBox(
             "Participant has consented to local face processing and storage."
         )
-        self.consent_checkbox.setWordWrap(True)
         profile_card.body.addWidget(self.consent_checkbox)
 
         consent_hint = QLabel(
