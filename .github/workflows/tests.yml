@@ -1,10 +1,8 @@
 name: Tests
 
-# Runs tests/unit only -- fast and dependency-light by design (see
-# docs/TESTING.md). Does NOT install insightface/onnxruntime/PySide6:
-# tests/unit/ never needs them, and installing them here would make CI
-# slow and heavy for no benefit. Tests that genuinely need those belong
-# in tests/performance/, tests/accuracy/, or tests/integration/ instead.
+# Runs the fast unit suite on Python 3.11/3.12. Python 3.11 also performs
+# a headless GUI construction/navigation smoke test so desktop regressions
+# are caught before Windows packaging.
 
 "on":
   push:
@@ -37,3 +35,13 @@ jobs:
 
       - name: Run unit tests
         run: pytest tests/unit -v
+
+      - name: Install GUI smoke-test dependency
+        if: matrix.python-version == '3.11'
+        run: pip install PySide6==6.7.2
+
+      - name: Headless UI smoke test
+        if: matrix.python-version == '3.11'
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: python scripts/ui_smoke_test.py
