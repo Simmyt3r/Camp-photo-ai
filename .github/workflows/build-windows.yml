@@ -211,16 +211,14 @@ jobs:
             "dist/camp-photo-ai-cli" `
             "release/camp-photo-ai-cli"
 
-          if (Test-Path "docs") {
-            Copy-Item -Recurse `
-              "docs" `
-              "release/docs"
+          foreach ($file in @("START_HERE.txt", "USER_AGREEMENT.txt", "CONTACT.txt")) {
+            Copy-Item `
+              "packaging/$file" `
+              "release/$file"
           }
 
-          if (Test-Path "README.md") {
-            Copy-Item `
-              "README.md" `
-              "release/README.md"
+          if (Test-Path "LICENSE") {
+            Copy-Item "LICENSE" "release/LICENSE"
           }
 
 
