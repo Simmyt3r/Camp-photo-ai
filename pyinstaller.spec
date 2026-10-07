@@ -9,6 +9,7 @@
 
 from pathlib import Path
 
+from PIL import Image
 from PyInstaller.utils.hooks import (
     collect_all,
     collect_data_files,
@@ -17,6 +18,33 @@ from PyInstaller.utils.hooks import (
 
 block_cipher = None
 PROJECT_ROOT = Path(SPECPATH)
+
+# Generate a native Windows icon from the verified PNG on every build.
+# This avoids relying on a hand-committed ICO, which is easy to corrupt.
+ICON_PNG = PROJECT_ROOT / "assets" / "campphoto_logo.png"
+ICON_DIR = PROJECT_ROOT / "build" / "branding"
+ICON_ICO = ICON_DIR / "campphoto_logo.ico"
+ICON_DIR.mkdir(parents=True, exist_ok=True)
+
+with Image.open(ICON_PNG) as logo:
+    logo.load()
+    logo.convert("RGBA").save(
+        ICON_ICO,
+        format="ICO",
+        sizes=[
+            (16, 16),
+            (24, 24),
+            (32, 32),
+            (48, 48),
+            (64, 64),
+            (96, 96),
+            (128, 128),
+            (256, 256),
+        ],
+    )
+
+with Image.open(ICON_ICO) as icon_file:
+    icon_file.verify()
 
 
 # ---------------------------------------------------------------------------
@@ -142,7 +170,7 @@ gui_exe = EXE(
     strip=False,
     upx=False,
     console=False,
-    icon=str(PROJECT_ROOT / "assets" / "campphoto_logo.ico"),
+    icon=str(ICON_ICO),
 )
 
 gui_collect = COLLECT(
