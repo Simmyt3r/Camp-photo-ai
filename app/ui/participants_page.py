@@ -1,16 +1,13 @@
-"""Participants screen (section 19): search by name/ID/registration
-number/category, view reference thumbnails and matched-photo count,
-edit metadata, delete, export matched photos, and reprocess (re-scan a
-folder for just this one person)."""
+"""Participant management: search, edit, export, reprocess, and delete."""
 from __future__ import annotations
 
 from pathlib import Path
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
-    QDialog, QDialogButtonBox, QFileDialog, QHBoxLayout, QLabel, QLineEdit,
-    QListWidget, QListWidgetItem, QMessageBox, QProgressBar, QPushButton,
-    QVBoxLayout, QWidget,
+    QDialog, QDialogButtonBox, QFileDialog, QFormLayout, QHBoxLayout, QLabel,
+    QLineEdit, QListWidget, QListWidgetItem, QMessageBox, QProgressBar,
+    QPushButton, QVBoxLayout, QWidget,
 )
 
 from app.bootstrap import AppContext
@@ -22,96 +19,141 @@ from app.services.participant_management import (
 )
 from app.services.review_service import delete_participant
 from app.ui.image_utils import bytes_to_qpixmap
+from app.ui.widgets import Card, PageHeader
 from app.ui.workers import ProcessingWorker
 
 
 class ReprocessDialog(QDialog):
-    """Re-scans a chosen folder for just one participant, bypassing the
-    cache (resume=False) since the point is re-evaluating photos that
-    were likely already processed once -- see batch_processor.run_batch's
-    participant_filter docstring for why resume must be off here."""
-
     def __init__(self, context: AppContext, participant: Participant, default_input_dir: str, parent=None):
         super().__init__(parent)
         self.context = context
         self.participant = participant
         self._worker: ProcessingWorker | None = None
-        self.setWindowTitle(f"Reprocess: {participant.full_name}")
-        self.resize(480, 220)
+        self.setWindowTitle(f"Reprocess • {participant.full_name}")
+        self.resize(560, 320)
+        self.setMinimumWidth(520)
 
         layout = QVBoxLayout(self)
-        info = QLabel(
-            f"Re-scans a folder of photos, matching only against {participant.full_name} "
-            f"({participant.participant_id}) -- useful after adding better reference photos, "
-            f"or if they were missed the first time. Every photo in the folder is re-evaluated, "
-            f"even ones already processed before."
-        )
-        info.setWordWrap(True)
-        layout.addWidget(info)
+        layout.setContentsMargins(20, 20, 20, 20)
+        layout.setSpacing(12)
 
-        input_row = QHBoxLayout()
+        layout.addWidget(PageHeader(
+            "Reprocess participant",
+            f"Scan photos again for {participant.full_name} ({participant.participant_id}) only. "
+            "Previously processed files are evaluated again.",
+        ))
+
+        card = Card("Folders")
+        form = QFormLayout()
         self.input_edit = QLineEdit(default_input_dir)
+        input_row = QHBoxLayout()
         input_row.addWidget(self.input_edit, stretch=1)
-        browse_btn = QPushButton("Browse...")
+        browse_btn = QPushButton("Browse")
         browse_btn.clicked.connect(self._browse)
         input_row.addWidget(browse_btn)
-        layout.addLayout(input_row)
+        input_container = QWidget()
+        input_container.setLayout(input_row)
+        form.addRow("Input folder", input_container)
 
         self.output_edit = QLineEdit(context.settings.output_dir)
-        layout.addWidget(QLabel("Output folder (same structure as normal processing):"))
-        layout.addWidget(self.output_edit)
+        form.addRow("Output folder", self.output_edit)
+        card.body.addLayout(form)
+        layout.addWidget(card)
 
         self.progress_bar = QProgressBar()
         layout.addWidget(self.progress_bar)
-        self.status_label = QLabel("")
+        self.status_label = QLabel("Ready to reprocess.")
+        self.status_label.setObjectName("infoBanner")
+        self.status_label.setWordWrap(True)
         layout.addWidget(self.status_label)
 
         buttons = QDialogButtonBox(QDialogButtonBox.Close)
         buttons.rejected.connect(self.reject)
-        self.start_btn = QPushButton("Start Reprocessing")
+        self.start_btn = QPushButton("Start reprocessing")
         self.start_btn.setObjectName("primaryButton")
         self.start_btn.clicked.connect(self._start)
         buttons.addButton(self.start_btn, QDialogButtonBox.ActionRole)
         layout.addWidget(buttons)
 
+    def _set_status(self, text: str, kind: str = "info") -> None:
+        names = {
+            "info": "infoBanner",
+            "success": "successBanner",
+            "warning": "warningBanner",
+            "error": "errorBanner",
+        }
+        self.status_label.setObjectName(names.get(kind, "infoBanner"))
+        self.status_label.setText(text)
+        self.status_label.style().unpolish(self.status_label)
+        self.status_label.style().polish(self.status_label)
+
     def _browse(self) -> None:
-        path = QFileDialog.getExistingDirectory(self, "Select folder", self.input_edit.text() or "")
+        path = QFileDialog.getExistingDirectory(
+            self, "Select folder", self.input_edit.text() or ""
+        )
         if path:
             self.input_edit.setText(path)
 
     def _start(self) -> None:
         input_dir = self.input_edit.text().strip()
+        output_dir = self.output_edit.text().strip()
         if not input_dir or not Path(input_dir).is_dir():
-            self.status_label.setText("Choose a valid input folder first.")
+            self._set_status("Choose a valid input folder first.", "warning")
+            return
+        if not output_dir:
+            self._set_status("Choose an output folder first.", "warning")
             return
 
         self.start_btn.setEnabled(False)
-        self.status_label.setText("Reprocessing...")
+        self.progress_bar.setRange(0, 0)
+        self._set_status("Preparing model and reprocessing photos...")
+
         self._worker = ProcessingWorker(
-            self.context.settings, Path(input_dir), Path(self.output_edit.text().strip()),
-            self.context.embedding_service, resume=False,
+            self.context.settings,
+            Path(input_dir),
+            Path(output_dir),
+            self.context.embedding_service,
+            resume=False,
             participant_filter={self.participant.participant_id},
         )
+        self._worker.model_progress.connect(self._on_model_progress)
         self._worker.progress.connect(self._on_progress)
         self._worker.finished_ok.connect(self._on_finished)
         self._worker.failed.connect(self._on_failed)
         self._worker.start()
 
+    def _on_model_progress(self, downloaded: int, total, message: str) -> None:
+        if total and total > 1:
+            percent = int(downloaded * 100 / total)
+            self.progress_bar.setRange(0, 100)
+            self.progress_bar.setValue(percent)
+            self._set_status(f"{message} {percent}%")
+        else:
+            self.progress_bar.setRange(0, 0)
+            self._set_status(message)
+
     def _on_progress(self, stats, filename: str) -> None:
+        self.progress_bar.setRange(0, 100)
         if stats.total_photos > 0:
             self.progress_bar.setValue(int(100 * stats.processed / stats.total_photos))
-        self.status_label.setText(f"{stats.processed}/{stats.total_photos} -- {filename[:40]}")
+        self._set_status(
+            f"{stats.processed}/{stats.total_photos} • {Path(filename).name}"
+        )
 
     def _on_finished(self, stats) -> None:
         self.start_btn.setEnabled(True)
-        self.status_label.setText(
-            f"Done. {stats.auto_matched} auto-matched, {stats.review} sent to review, "
-            f"{stats.unmatched} still unmatched."
+        self.progress_bar.setRange(0, 100)
+        self.progress_bar.setValue(100)
+        self._set_status(
+            f"Done. {stats.auto_matched} auto-matched, {stats.review} need review, "
+            f"{stats.unmatched} unmatched.",
+            "success",
         )
 
     def _on_failed(self, message: str) -> None:
         self.start_btn.setEnabled(True)
-        self.status_label.setText(f"Failed: {message}")
+        self.progress_bar.setRange(0, 100)
+        self._set_status(f"Reprocessing failed: {message}", "error")
 
 
 class ParticipantsPage(QWidget):
@@ -120,95 +162,159 @@ class ParticipantsPage(QWidget):
         self.context = context
         self._current_participant_id: int | None = None
 
-        layout = QHBoxLayout(self)
-        layout.setContentsMargins(32, 32, 32, 32)
-        layout.setSpacing(20)
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(28, 26, 28, 26)
+        outer.setSpacing(16)
+        outer.addWidget(PageHeader(
+            "Participants",
+            "Search registered people, edit metadata, export their matched photos, or reprocess them.",
+        ))
 
-        left = QVBoxLayout()
-        header = QLabel("Participants")
-        header.setObjectName("pageTitle")
-        left.addWidget(header)
+        body = QHBoxLayout()
+        body.setSpacing(14)
 
+        list_card = Card("People")
         search_row = QHBoxLayout()
         self.search_edit = QLineEdit()
-        self.search_edit.setPlaceholderText("Search by name, ID, registration number, or category...")
+        self.search_edit.setPlaceholderText("Name, participant ID, registration number, or group")
         self.search_edit.returnPressed.connect(self.refresh)
         search_row.addWidget(self.search_edit, stretch=1)
+
         search_btn = QPushButton("Search")
+        search_btn.setObjectName("secondaryButton")
         search_btn.clicked.connect(self.refresh)
         search_row.addWidget(search_btn)
-        left.addLayout(search_row)
+
+        clear_btn = QPushButton("Clear")
+        clear_btn.setObjectName("ghostButton")
+        clear_btn.clicked.connect(self._clear_search)
+        search_row.addWidget(clear_btn)
+        list_card.body.addLayout(search_row)
+
+        self.result_count = QLabel("")
+        self.result_count.setObjectName("cardHint")
+        list_card.body.addWidget(self.result_count)
 
         self.results_list = QListWidget()
         self.results_list.currentItemChanged.connect(self._on_selection_changed)
-        left.addWidget(self.results_list, stretch=1)
-        layout.addLayout(left, stretch=1)
+        list_card.body.addWidget(self.results_list, stretch=1)
+        body.addWidget(list_card, stretch=1)
 
-        right = QVBoxLayout()
-        right.addWidget(QLabel("Reference photos"))
+        detail_card = Card(
+            "Participant details",
+            "Select a participant on the left to view and manage their record.",
+        )
+
         self.thumbnails_row = QHBoxLayout()
         self.thumbnails_row.setSpacing(8)
-        right.addLayout(self.thumbnails_row)
+        detail_card.body.addLayout(self.thumbnails_row)
 
-        self.info_label = QLabel("Select a participant from the list.")
-        self.info_label.setObjectName("hintLabel")
+        self.info_label = QLabel("No participant selected.")
+        self.info_label.setObjectName("infoBanner")
         self.info_label.setWordWrap(True)
-        right.addWidget(self.info_label)
+        detail_card.body.addWidget(self.info_label)
 
-        right.addWidget(QLabel("Full name"))
+        form = QFormLayout()
+        form.setSpacing(10)
         self.name_edit = QLineEdit()
-        right.addWidget(self.name_edit)
-
-        right.addWidget(QLabel("Registration number"))
         self.reg_edit = QLineEdit()
-        right.addWidget(self.reg_edit)
-
-        right.addWidget(QLabel("Category / group / platoon"))
         self.category_edit = QLineEdit()
-        right.addWidget(self.category_edit)
+        form.addRow("Full name", self.name_edit)
+        form.addRow("Registration no.", self.reg_edit)
+        form.addRow("Group / platoon", self.category_edit)
+        detail_card.body.addLayout(form)
 
-        save_btn = QPushButton("Save Changes")
-        save_btn.setObjectName("primaryButton")
-        save_btn.clicked.connect(self._save_metadata)
-        right.addWidget(save_btn)
+        self.save_btn = QPushButton("Save changes")
+        self.save_btn.setObjectName("primaryButton")
+        self.save_btn.clicked.connect(self._save_metadata)
+        detail_card.body.addWidget(self.save_btn)
 
         actions_row = QHBoxLayout()
-        export_btn = QPushButton("Export Photos...")
-        export_btn.clicked.connect(self._export)
-        actions_row.addWidget(export_btn)
+        self.export_btn = QPushButton("Export photos")
+        self.export_btn.clicked.connect(self._export)
+        actions_row.addWidget(self.export_btn)
 
-        reprocess_btn = QPushButton("Reprocess...")
-        reprocess_btn.clicked.connect(self._reprocess)
-        actions_row.addWidget(reprocess_btn)
+        self.reprocess_btn = QPushButton("Reprocess")
+        self.reprocess_btn.clicked.connect(self._reprocess)
+        actions_row.addWidget(self.reprocess_btn)
 
-        delete_btn = QPushButton("Delete Participant")
-        delete_btn.clicked.connect(self._delete)
-        actions_row.addWidget(delete_btn)
         actions_row.addStretch(1)
-        right.addLayout(actions_row)
 
-        right.addStretch(1)
-        layout.addLayout(right, stretch=2)
+        self.delete_btn = QPushButton("Delete participant")
+        self.delete_btn.setObjectName("dangerButton")
+        self.delete_btn.clicked.connect(self._delete)
+        actions_row.addWidget(self.delete_btn)
+        detail_card.body.addLayout(actions_row)
+        detail_card.body.addStretch(1)
 
+        body.addWidget(detail_card, stretch=2)
+        outer.addLayout(body, stretch=1)
+
+        self._detail_controls = [
+            self.name_edit,
+            self.reg_edit,
+            self.category_edit,
+            self.save_btn,
+            self.export_btn,
+            self.reprocess_btn,
+            self.delete_btn,
+        ]
+        self._set_detail_enabled(False)
+        self.refresh()
+
+    def _set_detail_enabled(self, enabled: bool) -> None:
+        for widget in self._detail_controls:
+            widget.setEnabled(enabled)
+
+    def _clear_search(self) -> None:
+        self.search_edit.clear()
         self.refresh()
 
     def on_shown(self) -> None:
         self.refresh()
 
     def refresh(self) -> None:
+        selected_id = self._current_participant_id
         self.results_list.clear()
-        with get_session() as session:
-            results = search_participants(session, self.search_edit.text())
-            for p in results:
-                matched = count_matched_photos(session, p.id)
-                item = QListWidgetItem(f"{p.participant_id} -- {p.full_name} ({matched} matched photos)")
-                item.setData(Qt.UserRole, p.id)
-                self.results_list.addItem(item)
+
+        try:
+            with get_session() as session:
+                results = search_participants(session, self.search_edit.text())
+                for participant in results:
+                    matched = count_matched_photos(session, participant.id)
+                    item = QListWidgetItem(
+                        f"{participant.full_name}\n"
+                        f"{participant.participant_id} • {matched} matched photo(s)"
+                    )
+                    item.setData(Qt.UserRole, participant.id)
+                    self.results_list.addItem(item)
+        except Exception as exc:
+            self.result_count.setText(f"Could not load participants: {exc}")
+            self._clear_detail()
+            return
+
+        self.result_count.setText(
+            f"{len(results)} participant{'s' if len(results) != 1 else ''}"
+            + (" found" if self.search_edit.text().strip() else " registered")
+        )
 
         if not results:
-            self.info_label.setText("No participants match that search." if self.search_edit.text().strip()
-                                     else "No participants registered yet.")
+            self.info_label.setText(
+                "No participants match that search."
+                if self.search_edit.text().strip()
+                else "No participants have been registered yet."
+            )
             self._clear_detail()
+            return
+
+        if selected_id is not None:
+            for row in range(self.results_list.count()):
+                item = self.results_list.item(row)
+                if item.data(Qt.UserRole) == selected_id:
+                    self.results_list.setCurrentRow(row)
+                    return
+
+        self.results_list.setCurrentRow(0)
 
     def _clear_detail(self) -> None:
         self._current_participant_id = None
@@ -216,6 +322,7 @@ class ParticipantsPage(QWidget):
         self.name_edit.clear()
         self.reg_edit.clear()
         self.category_edit.clear()
+        self._set_detail_enabled(False)
 
     def _clear_thumbnails(self) -> None:
         while self.thumbnails_row.count():
@@ -225,40 +332,54 @@ class ParticipantsPage(QWidget):
 
     def _on_selection_changed(self, current: QListWidgetItem | None, _previous) -> None:
         if current is None:
+            self._clear_detail()
             return
         self._load_detail(current.data(Qt.UserRole))
 
     def _load_detail(self, participant_db_id: int) -> None:
         self._current_participant_id = participant_db_id
         with get_session() as session:
-            p = session.get(Participant, participant_db_id)
-            if p is None:
+            participant = session.get(Participant, participant_db_id)
+            if participant is None:
+                self._clear_detail()
                 return
+
             matched = count_matched_photos(session, participant_db_id)
             thumbnails = [
-                e.thumbnail for e in
-                session.query(ReferenceEmbedding).filter_by(participant_db_id=participant_db_id).all()
-                if e.thumbnail
+                embedding.thumbnail
+                for embedding in session.query(ReferenceEmbedding)
+                .filter_by(participant_db_id=participant_db_id)
+                .all()
+                if embedding.thumbnail
             ]
 
-            self.name_edit.setText(p.full_name)
-            self.reg_edit.setText(p.registration_number or "")
-            self.category_edit.setText(p.category or "")
+            self.name_edit.setText(participant.full_name)
+            self.reg_edit.setText(participant.registration_number or "")
+            self.category_edit.setText(participant.category or "")
             self.info_label.setText(
-                f"ID: {p.participant_id}  |  Registered: {p.created_at.strftime('%Y-%m-%d')}  |  "
-                f"{matched} matched photo(s)  |  {len(thumbnails)} reference photo(s)"
+                f"ID {participant.participant_id} • registered "
+                f"{participant.created_at.strftime('%Y-%m-%d')} • "
+                f"{matched} matched photo(s) • {len(thumbnails)} reference photo(s)"
             )
 
         self._clear_thumbnails()
-        for thumb_bytes in thumbnails[:5]:
-            label = QLabel()
-            label.setObjectName("reviewPreview")
-            label.setFixedSize(100, 100)
-            label.setAlignment(Qt.AlignCenter)
-            pixmap = bytes_to_qpixmap(thumb_bytes)
-            label.setPixmap(pixmap.scaled(100, 100, Qt.KeepAspectRatio, Qt.SmoothTransformation))
-            self.thumbnails_row.addWidget(label)
+        if thumbnails:
+            for thumb_bytes in thumbnails[:5]:
+                label = QLabel()
+                label.setObjectName("reviewPreview")
+                label.setFixedSize(92, 92)
+                label.setAlignment(Qt.AlignCenter)
+                pixmap = bytes_to_qpixmap(thumb_bytes)
+                label.setPixmap(
+                    pixmap.scaled(92, 92, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+                )
+                self.thumbnails_row.addWidget(label)
+        else:
+            placeholder = QLabel("No stored reference thumbnails")
+            placeholder.setObjectName("hintLabel")
+            self.thumbnails_row.addWidget(placeholder)
         self.thumbnails_row.addStretch(1)
+        self._set_detail_enabled(True)
 
     def _save_metadata(self) -> None:
         if self._current_participant_id is None:
@@ -266,7 +387,9 @@ class ParticipantsPage(QWidget):
         try:
             with get_session() as session:
                 update_participant_metadata(
-                    session, self._current_participant_id, actor="gui-operator",
+                    session,
+                    self._current_participant_id,
+                    actor="gui-operator",
                     full_name=self.name_edit.text(),
                     registration_number=self.reg_edit.text(),
                     category=self.category_edit.text(),
@@ -274,55 +397,90 @@ class ParticipantsPage(QWidget):
         except ValueError as exc:
             QMessageBox.warning(self, "Could not save", str(exc))
             return
+
+        QMessageBox.information(self, "Saved", "Participant details were updated.")
         self.refresh()
 
     def _delete(self) -> None:
         if self._current_participant_id is None:
             return
+
         confirm = QMessageBox.question(
-            self, "Delete participant?",
-            "This permanently deletes the participant and every reference embedding on file for "
-            "them (see docs/PRIVACY.md) -- it cannot be undone. Photos already copied into their "
-            "output folder are not touched by this and need to be removed separately if required.\n\n"
-            "Continue?",
+            self,
+            "Delete participant?",
+            "This permanently deletes the participant and their stored reference embeddings. "
+            "Photos already copied into the output folder are not removed.\n\nContinue?",
         )
         if confirm != QMessageBox.Yes:
             return
+
         with get_session() as session:
-            delete_participant(session, self._current_participant_id, actor="gui-operator")
+            delete_participant(
+                session,
+                self._current_participant_id,
+                actor="gui-operator",
+            )
         self._clear_detail()
         self.refresh()
 
     def _export(self) -> None:
         if self._current_participant_id is None:
             return
+
         with get_session() as session:
-            p = session.get(Participant, self._current_participant_id)
-            if p is None:
+            participant = session.get(Participant, self._current_participant_id)
+            if participant is None:
                 return
-            default_name = sanitize_export_filename(p)
+            default_name = sanitize_export_filename(participant)
             output_dir = Path(self.context.settings.output_dir)
 
-        path_str, _ = QFileDialog.getSaveFileName(self, "Export participant's photos", default_name, "Zip files (*.zip)")
+        path_str, _ = QFileDialog.getSaveFileName(
+            self,
+            "Export participant photos",
+            default_name,
+            "Zip files (*.zip)",
+        )
         if not path_str:
             return
 
-        count = export_participant_photos(output_dir, p, Path(path_str))
+        count = export_participant_photos(output_dir, participant, Path(path_str))
         if count == 0:
-            QMessageBox.information(self, "Nothing to export", "No matched photos found for this participant yet.")
+            QMessageBox.information(
+                self,
+                "Nothing to export",
+                "No matched photos were found for this participant.",
+            )
         else:
-            QMessageBox.information(self, "Exported", f"{count} photo(s) exported to {path_str}")
+            QMessageBox.information(
+                self,
+                "Export complete",
+                f"{count} photo(s) were exported.",
+            )
 
     def _reprocess(self) -> None:
         if self._current_participant_id is None:
             return
-        with get_session() as session:
-            p = session.get(Participant, self._current_participant_id)
-            if p is None:
-                return
-            last_run = session.query(ProcessingRun).order_by(ProcessingRun.id.desc()).first()
-            default_input = last_run.input_dir if last_run else self.context.settings.input_dir
 
-        dialog = ReprocessDialog(self.context, p, default_input, parent=self)
+        with get_session() as session:
+            participant = session.get(Participant, self._current_participant_id)
+            if participant is None:
+                return
+            last_run = (
+                session.query(ProcessingRun)
+                .order_by(ProcessingRun.id.desc())
+                .first()
+            )
+            default_input = (
+                last_run.input_dir
+                if last_run
+                else self.context.settings.input_dir
+            )
+
+        dialog = ReprocessDialog(
+            self.context,
+            participant,
+            default_input,
+            parent=self,
+        )
         dialog.exec()
         self.refresh()
