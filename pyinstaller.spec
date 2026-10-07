@@ -44,7 +44,9 @@ PROJECT_ROOT = Path(SPECPATH)
 #
 
 collected_binaries = []
-collected_datas = []
+collected_datas = [
+    (str(PROJECT_ROOT / "assets" / "campphoto_logo.png"), "assets"),
+]
 collected_hiddenimports = []
 
 
@@ -140,7 +142,7 @@ gui_exe = EXE(
     strip=False,
     upx=False,
     console=False,
-    icon=None,
+    icon=str(PROJECT_ROOT / "assets" / "campphoto_logo.png"),
 )
 
 gui_collect = COLLECT(
