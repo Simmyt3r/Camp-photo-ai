@@ -5,7 +5,7 @@ from pathlib import Path
 
 import cv2
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QPixmap
+from PySide6.QtGui import QKeySequence, QPixmap, QShortcut
 from PySide6.QtWidgets import (
     QComboBox, QHBoxLayout, QLabel, QListWidget, QListWidgetItem, QMessageBox,
     QPushButton, QVBoxLayout, QWidget,
@@ -17,6 +17,7 @@ from app.database.models import MatchRecord, Participant, ReferenceEmbedding
 from app.services.review_service import (
     confirm_match, list_pending_reviews, reassign_match, reject_match,
 )
+from app.ui.activity import notify_activity
 from app.ui.image_utils import bytes_to_qpixmap, crop_with_padding, numpy_to_qpixmap
 from app.ui.widgets import Card, PageHeader
 
@@ -129,6 +130,11 @@ class ReviewPage(QWidget):
             self.reassign_btn,
         ]
         self._set_decisions_enabled(False)
+
+        QShortcut(QKeySequence(Qt.Key_Return), self, activated=self._confirm)
+        QShortcut(QKeySequence(Qt.Key_Enter), self, activated=self._confirm)
+        QShortcut(QKeySequence("X"), self, activated=self._reject)
+        QShortcut(QKeySequence("R"), self, activated=self._reassign)
         self.refresh()
 
     def _set_decisions_enabled(self, enabled: bool) -> None:
@@ -287,10 +293,20 @@ class ReviewPage(QWidget):
                     f"({record.second_best_score:.3f})"
                 )
 
+            confidence_percent = max(0, min(100, round(record.best_score * 100)))
+            if record.best_score >= self.context.settings.auto_match_threshold:
+                confidence_label = "High"
+            elif record.best_score >= self.context.settings.review_threshold:
+                confidence_label = "Medium"
+            else:
+                confidence_label = "Low"
+
             self.info_label.setText(
-                f"Suggested: {candidate_id or 'none'} • score {record.best_score:.3f} • "
+                f"Suggested: {candidate_id or 'none'} • "
+                f"Similarity {confidence_percent}% • Confidence: {confidence_label} • "
                 f"margin {record.score_margin:.3f}{runner_up}. "
-                f"Reason: {record.reason}"
+                f"Reason: {record.reason}\n"
+                "Shortcuts: Enter = Confirm • X = Reject • R = Reassign"
             )
 
         self._set_decisions_enabled(True)
@@ -310,6 +326,7 @@ class ReviewPage(QWidget):
         except ValueError as exc:
             QMessageBox.warning(self, "Cannot confirm", str(exc))
             return
+        notify_activity("Match confirmed and photo assigned.", "success")
         self.refresh()
 
     def _reject(self) -> None:
@@ -321,6 +338,7 @@ class ReviewPage(QWidget):
                 self._current_record_id,
                 reviewer="gui-operator",
             )
+        notify_activity("Match rejected.", "info")
         self.refresh()
 
     def _reassign(self) -> None:
@@ -336,6 +354,7 @@ class ReviewPage(QWidget):
             )
             return
 
+        participant_name = self.reassign_combo.currentText()
         with get_session() as session:
             reassign_match(
                 session,
@@ -345,4 +364,5 @@ class ReviewPage(QWidget):
                 output_dir=Path(self.context.settings.output_dir),
                 duplicate_policy=self.context.settings.duplicate_policy,
             )
+        notify_activity(f"Match reassigned to {participant_name}.", "success")
         self.refresh()

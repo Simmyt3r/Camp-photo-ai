@@ -18,6 +18,8 @@ from app.bootstrap import AppContext
 from app.config.settings import Settings
 from app.database.db import get_engine, init_engine
 from app.services.face_embedding import FaceEmbeddingService
+from app.ui.agreement_dialog import UserAgreementDialog
+from app.ui.branding import app_logo_path
 from app.ui.main_window import MainWindow
 from app.ui.styles import STYLESHEET
 
@@ -51,11 +53,19 @@ def main() -> None:
                 models_dir=settings.models_dir,
             ),
         )
+        assert app_logo_path().is_file()
+
+        agreement = UserAgreementDialog(require_acceptance=False)
+        agreement.show()
+        app.processEvents()
+        agreement.close()
+        app.processEvents()
+
         window = MainWindow(context)
         window.show()
         app.processEvents()
 
-        assert window.stack.count() == 7
+        assert window.stack.count() == 8
         assert window.minimumWidth() <= 820
         assert window.windowTitle().endswith("CampPhoto AI")
 
@@ -67,6 +77,7 @@ def main() -> None:
             "participants",
             "reports",
             "settings",
+            "about",
         ):
             window.navigate(key)
             app.processEvents()

@@ -94,6 +94,9 @@ class Settings:
     embedding_model_name: str = "buffalo_l"
     embedding_model_version: str = "1.0"
 
+    # Product onboarding / responsible-use agreement
+    user_agreement_version: str = ""
+
     def __post_init__(self) -> None:
         if not isinstance(self.supported_extensions, tuple):
             self.supported_extensions = tuple(self.supported_extensions)

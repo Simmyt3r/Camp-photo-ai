@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import numpy as np
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QDialog, QDialogButtonBox, QFileDialog, QFormLayout, QHBoxLayout, QLabel,
@@ -17,10 +18,15 @@ from app.services.participant_management import (
     count_matched_photos, export_participant_photos, sanitize_export_filename,
     search_participants, update_participant_metadata,
 )
+from app.services.face_embedding import (
+    EMBEDDING_DIMENSIONS, EMBEDDING_MODEL_NAME, EMBEDDING_MODEL_VERSION,
+)
 from app.services.review_service import delete_participant
+from app.ui.activity import notify_activity
 from app.ui.image_utils import bytes_to_qpixmap
 from app.ui.widgets import Card, PageHeader
-from app.ui.workers import ProcessingWorker
+from app.ui.workers import ProcessingWorker, ReferencePhotoResult, RegistrationWorker
+from app.utilities.file_utils import file_sha256
 
 
 class ReprocessDialog(QDialog):
@@ -107,6 +113,7 @@ class ReprocessDialog(QDialog):
         self.start_btn.setEnabled(False)
         self.progress_bar.setRange(0, 0)
         self._set_status("Preparing model and reprocessing photos...")
+        notify_activity(f"Reprocessing photos for {self.participant.full_name}…", "info")
 
         self._worker = ProcessingWorker(
             self.context.settings,
@@ -144,16 +151,19 @@ class ReprocessDialog(QDialog):
         self.start_btn.setEnabled(True)
         self.progress_bar.setRange(0, 100)
         self.progress_bar.setValue(100)
-        self._set_status(
-            f"Done. {stats.auto_matched} auto-matched, {stats.review} need review, "
-            f"{stats.unmatched} unmatched.",
-            "success",
+        message = (
+            f"Reprocessing complete for {self.participant.full_name}: "
+            f"{stats.auto_matched} auto-matched, {stats.review} need review, "
+            f"{stats.unmatched} unmatched."
         )
+        self._set_status(message, "success")
+        notify_activity(message, "success")
 
     def _on_failed(self, message: str) -> None:
         self.start_btn.setEnabled(True)
         self.progress_bar.setRange(0, 100)
         self._set_status(f"Reprocessing failed: {message}", "error")
+        notify_activity(f"Reprocessing failed: {message}", "error")
 
 
 class ParticipantsPage(QWidget):
@@ -161,6 +171,7 @@ class ParticipantsPage(QWidget):
         super().__init__()
         self.context = context
         self._current_participant_id: int | None = None
+        self._reference_worker: RegistrationWorker | None = None
 
         outer = QVBoxLayout(self)
         outer.setContentsMargins(28, 26, 28, 26)
@@ -238,6 +249,11 @@ class ParticipantsPage(QWidget):
         self.reprocess_btn.clicked.connect(self._reprocess)
         actions_row.addWidget(self.reprocess_btn)
 
+        self.add_reference_btn = QPushButton("Add reference photos")
+        self.add_reference_btn.setObjectName("secondaryButton")
+        self.add_reference_btn.clicked.connect(self._add_reference_photos)
+        actions_row.addWidget(self.add_reference_btn)
+
         actions_row.addStretch(1)
 
         self.delete_btn = QPushButton("Delete participant")
@@ -257,6 +273,7 @@ class ParticipantsPage(QWidget):
             self.save_btn,
             self.export_btn,
             self.reprocess_btn,
+            self.add_reference_btn,
             self.delete_btn,
         ]
         self._set_detail_enabled(False)
@@ -399,6 +416,7 @@ class ParticipantsPage(QWidget):
             return
 
         QMessageBox.information(self, "Saved", "Participant details were updated.")
+        notify_activity("Participant details updated.", "success")
         self.refresh()
 
     def _delete(self) -> None:
@@ -421,6 +439,7 @@ class ParticipantsPage(QWidget):
                 actor="gui-operator",
             )
         self._clear_detail()
+        notify_activity("Participant and stored reference embeddings deleted.", "success")
         self.refresh()
 
     def _export(self) -> None:
@@ -450,12 +469,88 @@ class ParticipantsPage(QWidget):
                 "Nothing to export",
                 "No matched photos were found for this participant.",
             )
+            notify_activity("No matched photos were available to export.", "warning")
         else:
             QMessageBox.information(
                 self,
                 "Export complete",
                 f"{count} photo(s) were exported.",
             )
+            notify_activity(f"Exported {count} participant photo(s).", "success")
+
+    def _add_reference_photos(self) -> None:
+        if self._current_participant_id is None:
+            return
+
+        paths, _ = QFileDialog.getOpenFileNames(
+            self,
+            "Add reference photos",
+            "",
+            "Images (*.jpg *.jpeg *.png *.webp *.tiff *.tif)",
+        )
+        if not paths:
+            return
+
+        self.add_reference_btn.setEnabled(False)
+        notify_activity("Validating new reference photos…", "info")
+        self._reference_worker = RegistrationWorker(
+            self.context.embedding_service,
+            [Path(path) for path in paths],
+        )
+        self._reference_worker.result_ready.connect(self._on_reference_results)
+        self._reference_worker.failed.connect(self._on_reference_failed)
+        self._reference_worker.start()
+
+    def _on_reference_failed(self, message: str) -> None:
+        self.add_reference_btn.setEnabled(True)
+        notify_activity(f"Reference-photo validation failed: {message}", "error")
+
+    def _on_reference_results(self, results: list[ReferencePhotoResult]) -> None:
+        self.add_reference_btn.setEnabled(True)
+        if self._current_participant_id is None:
+            return
+
+        accepted = [result for result in results if result.accepted]
+        rejected = [result for result in results if not result.accepted]
+        added = 0
+
+        with get_session() as session:
+            participant = session.get(Participant, self._current_participant_id)
+            if participant is None:
+                return
+
+            existing_hashes = {
+                row.source_image_hash
+                for row in session.query(ReferenceEmbedding)
+                .filter_by(participant_db_id=participant.id)
+                .all()
+                if row.source_image_hash
+            }
+
+            for result in accepted:
+                image_hash = file_sha256(Path(result.path))
+                if image_hash in existing_hashes:
+                    continue
+                session.add(ReferenceEmbedding(
+                    participant_db_id=participant.id,
+                    vector=result.embedding.astype(np.float32).tobytes(),
+                    dimensions=EMBEDDING_DIMENSIONS,
+                    model_name=EMBEDDING_MODEL_NAME,
+                    model_version=EMBEDDING_MODEL_VERSION,
+                    source_image_hash=image_hash,
+                    thumbnail=result.thumbnail,
+                ))
+                existing_hashes.add(image_hash)
+                added += 1
+
+        if added:
+            message = f"Added {added} new reference photo(s)."
+            if rejected:
+                message += f" {len(rejected)} photo(s) were rejected."
+            notify_activity(message, "success")
+        else:
+            notify_activity("No new usable reference photos were added.", "warning")
+        self.refresh()
 
     def _reprocess(self) -> None:
         if self._current_participant_id is None:

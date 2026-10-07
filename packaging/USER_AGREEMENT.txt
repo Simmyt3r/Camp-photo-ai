@@ -1,0 +1,23 @@
+CampPhoto AI Responsible Use Agreement
+
+CampPhoto AI is a local photo-matching tool produced by Simeon's Laboratories
+And Co Technologies Ltd.
+
+By using this application, the operator agrees to:
+- register participants only after appropriate consent for facial reference
+  processing and storage;
+- use the software for legitimate photo organisation and delivery, not covert
+  surveillance, harassment, discrimination, or unlawful tracking;
+- treat automated matches as assistance rather than legal proof of identity;
+- protect the computer, database, reference photos, exports, and other personal
+  data created or stored through the application;
+- delete personal and biometric data when it is no longer required for the
+  purpose for which it was collected; and
+- follow applicable privacy, data-protection, event, school, workplace, or
+  organisational rules.
+
+Support:
+09039930006
+silabtechnologies@gmail.com
+
+Agreement version: 2026-10-07-v1

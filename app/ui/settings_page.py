@@ -11,6 +11,7 @@ from PySide6.QtWidgets import (
 
 from app.bootstrap import AppContext
 from app.config.settings import Settings
+from app.ui.activity import notify_activity
 from app.ui.widgets import Card, PageHeader
 
 
@@ -63,6 +64,11 @@ class SettingsPage(QWidget):
         storage_card.body.addLayout(storage_form)
         content_layout.addWidget(storage_card)
 
+        self.advanced_btn = QPushButton("Show advanced matching & diagnostics")
+        self.advanced_btn.setObjectName("secondaryButton")
+        self.advanced_btn.clicked.connect(self._toggle_advanced)
+        content_layout.addWidget(self.advanced_btn)
+
         matching_card = Card(
             "Face matching",
             "Thresholds are deployment-specific. Calibrate them against consented validation data.",
@@ -91,7 +97,9 @@ class SettingsPage(QWidget):
         self.top_k_spin.setRange(1, 10)
         matching_form.addRow("Top-K references", self.top_k_spin)
         matching_card.body.addLayout(matching_form)
-        content_layout.addWidget(matching_card)
+        self.matching_card = matching_card
+        self.matching_card.hide()
+        content_layout.addWidget(self.matching_card)
 
         performance_card = Card(
             "Processing",
@@ -148,7 +156,9 @@ class SettingsPage(QWidget):
         self.log_level_combo.addItems(["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"])
         behavior_form.addRow("Log detail", self.log_level_combo)
         behavior_card.body.addLayout(behavior_form)
-        content_layout.addWidget(behavior_card)
+        self.behavior_card = behavior_card
+        self.behavior_card.hide()
+        content_layout.addWidget(self.behavior_card)
 
         content_layout.addStretch(1)
         scroll.setWidget(content)
@@ -175,6 +185,15 @@ class SettingsPage(QWidget):
 
         self._load_into_form(context.settings)
 
+    def _toggle_advanced(self) -> None:
+        visible = not self.matching_card.isVisible()
+        self.matching_card.setVisible(visible)
+        self.behavior_card.setVisible(visible)
+        self.advanced_btn.setText(
+            "Hide advanced matching & diagnostics"
+            if visible
+            else "Show advanced matching & diagnostics"
+        )
     def _set_status(self, text: str, kind: str = "success") -> None:
         names = {
             "info": "infoBanner",
@@ -284,11 +303,12 @@ class SettingsPage(QWidget):
         updated.save()
         self.context.settings = updated
 
-        self._set_status(
+        message = (
             "Settings saved. Matching, duplicate, cache, and logging changes apply to the next "
-            "operation. Database/model path changes require a restart.",
-            "success",
+            "operation. Database/model path changes require a restart."
         )
+        self._set_status(message, "success")
+        notify_activity("Settings saved.", "success")
 
     def _restore_defaults(self) -> None:
         confirm = QMessageBox.question(
@@ -302,6 +322,7 @@ class SettingsPage(QWidget):
                 "Built-in defaults loaded into the form. Click Save settings to persist them.",
                 "info",
             )
+            notify_activity("Built-in defaults loaded. Save to apply them.", "info")
 
     def on_shown(self) -> None:
         self._load_into_form(self.context.settings)

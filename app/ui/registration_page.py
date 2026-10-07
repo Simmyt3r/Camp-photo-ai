@@ -11,7 +11,7 @@ from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import (
     QCheckBox, QFileDialog, QFormLayout, QGridLayout, QHBoxLayout, QLabel, QLineEdit,
     QListWidget, QListWidgetItem, QMessageBox, QProgressBar, QPushButton,
-    QVBoxLayout, QWidget,
+    QStyle, QVBoxLayout, QWidget,
 )
 
 from app.bootstrap import AppContext
@@ -21,8 +21,9 @@ from app.database.models import Participant, ReferenceEmbedding
 from app.services.face_embedding import (
     EMBEDDING_DIMENSIONS, EMBEDDING_MODEL_NAME, EMBEDDING_MODEL_VERSION,
 )
+from app.ui.activity import notify_activity
 from app.ui.image_utils import numpy_to_qpixmap
-from app.ui.widgets import Card, PageHeader
+from app.ui.widgets import Card, PageHeader, WorkflowSteps
 from app.ui.workers import ReferencePhotoResult, RegistrationWorker
 from app.utilities.file_utils import file_sha256
 
@@ -46,6 +47,7 @@ class RegistrationPage(QWidget):
             "Register Participant",
             "Create one participant profile and add clear reference photos for face matching.",
         ))
+        layout.addWidget(WorkflowSteps(["Details", "Reference photos", "Consent & register"], current=0))
 
         content = QHBoxLayout()
         content.setSpacing(14)
@@ -100,14 +102,17 @@ class RegistrationPage(QWidget):
 
         import_btn = QPushButton("Import photos")
         import_btn.setObjectName("secondaryButton")
+        import_btn.setIcon(self.style().standardIcon(QStyle.SP_DialogOpenButton))
         import_btn.clicked.connect(self._import_photos)
         photo_controls.addWidget(import_btn, 0, 0)
 
         self.camera_btn = QPushButton("Open camera")
+        self.camera_btn.setIcon(self.style().standardIcon(QStyle.SP_ComputerIcon))
         self.camera_btn.clicked.connect(self._toggle_camera)
         photo_controls.addWidget(self.camera_btn, 0, 1)
 
         self.capture_btn = QPushButton("Capture")
+        self.capture_btn.setIcon(self.style().standardIcon(QStyle.SP_DialogSaveButton))
         self.capture_btn.setEnabled(False)
         self.capture_btn.clicked.connect(self._capture_from_camera)
         photo_controls.addWidget(self.capture_btn, 0, 2)
@@ -161,6 +166,7 @@ class RegistrationPage(QWidget):
         register_row.addStretch(1)
         self.register_btn = QPushButton("Register participant")
         self.register_btn.setObjectName("primaryButton")
+        self.register_btn.setIcon(self.style().standardIcon(QStyle.SP_DialogApplyButton))
         self.register_btn.setMinimumWidth(180)
         self.register_btn.clicked.connect(self._start_registration)
         register_row.addWidget(self.register_btn)
@@ -235,6 +241,7 @@ class RegistrationPage(QWidget):
                 "Camera unavailable",
                 "CampPhoto AI could not open a camera. You can still import photos from disk.",
             )
+            notify_activity("Camera unavailable. Import reference photos instead.", "warning")
             return
 
         self._camera = camera
@@ -308,6 +315,7 @@ class RegistrationPage(QWidget):
         self.progress_bar.show()
         self.progress_bar.setRange(0, 0)
         self._set_status("Validating reference photos and preparing the face model...")
+        notify_activity("Validating participant reference photos…", "info")
 
         self._worker = RegistrationWorker(
             self.context.embedding_service,
@@ -337,6 +345,7 @@ class RegistrationPage(QWidget):
         self.register_btn.setEnabled(True)
         self.progress_bar.hide()
         self._set_status(f"Registration failed: {message}", "error")
+        notify_activity(f"Registration failed: {message}", "error")
 
     def _on_registration_results(self, results: list[ReferencePhotoResult]) -> None:
         self.register_btn.setEnabled(True)
@@ -357,6 +366,7 @@ class RegistrationPage(QWidget):
                 "No usable reference photos were found. Replace the rejected photos and try again.",
                 "error",
             )
+            notify_activity("No usable reference photos were found.", "error")
             return
 
         participant_id = self.id_input.text().strip()
@@ -405,6 +415,7 @@ class RegistrationPage(QWidget):
         if rejected:
             message += f" {len(rejected)} photo(s) were rejected."
         self._set_status(message, "success")
+        notify_activity(message, "success")
 
         self._pending_photos = []
         self._update_photo_count()
