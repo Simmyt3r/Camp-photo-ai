@@ -53,10 +53,16 @@ QToolTip {{
     border: none;
 }}
 
+#brandLogo {{
+    background: white;
+    border: 1px solid #334155;
+    border-radius: 10px;
+}}
+
 #sidebarTitle {{
     background: transparent;
     color: white;
-    font-size: 19px;
+    font-size: 18px;
     font-weight: 700;
 }}
 
@@ -107,6 +113,12 @@ QPushButton#navButton:checked {{
 #sidebarFooter {{
     background: transparent;
     color: #94A3B8;
+    font-size: 10px;
+}}
+
+#companyFooter {{
+    background: transparent;
+    color: #64748B;
     font-size: 10px;
 }}
 
@@ -388,4 +400,113 @@ QFrame[divider="true"] {{
 QMessageBox {{
     background: {CARD_BG};
 }}
+
+
+#statusChip {{
+    background: #F8FAFC;
+    color: #334155;
+    border: 1px solid #DCE3EC;
+    border-radius: 10px;
+    padding: 4px 9px;
+    font-size: 11px;
+    font-weight: 600;
+}}
+
+#statusChipReady {{
+    background: #F0FDF4;
+    color: #15803D;
+    border: 1px solid #BBF7D0;
+    border-radius: 10px;
+    padding: 4px 9px;
+    font-size: 11px;
+    font-weight: 600;
+}}
+
+#workflowSteps {{
+    background: white;
+    border: 1px solid #DCE3EC;
+    border-radius: 10px;
+}}
+
+#workflowStep {{
+    color: #64748B;
+    padding: 5px 8px;
+    font-size: 11px;
+}}
+
+#workflowStepActive {{
+    color: #1D4ED8;
+    background: #EFF6FF;
+    border: 1px solid #BFDBFE;
+    border-radius: 8px;
+    padding: 5px 9px;
+    font-size: 11px;
+    font-weight: 700;
+}}
+
+#workflowArrow {{
+    color: #94A3B8;
+    font-size: 16px;
+}}
+
+#dropZone {{
+    background: #F8FBFF;
+    border: 2px dashed #93C5FD;
+    border-radius: 12px;
+}}
+
+#dropZone:hover {{
+    background: #EFF6FF;
+    border-color: #2563EB;
+}}
+
+#dropTitle {{
+    color: #1D4ED8;
+    font-size: 14px;
+    font-weight: 700;
+}}
+
+#dropHint {{
+    color: #64748B;
+    font-size: 11px;
+}}
+
+#activityToast {{
+    background: #0F172A;
+    border: 1px solid #334155;
+    border-radius: 10px;
+}}
+
+#activityToast[level="success"] {{
+    background: #14532D;
+    border-color: #166534;
+}}
+
+#activityToast[level="warning"] {{
+    background: #78350F;
+    border-color: #92400E;
+}}
+
+#activityToast[level="error"] {{
+    background: #7F1D1D;
+    border-color: #991B1B;
+}}
+
+#activityToastText {{
+    color: white;
+    font-size: 12px;
+    font-weight: 600;
+}}
+
+#aboutTitle {{
+    font-size: 28px;
+    font-weight: 800;
+    color: #0F172A;
+}}
+
+#agreementCheckbox {{
+    spacing: 10px;
+    font-weight: 600;
+}}
+
 """
