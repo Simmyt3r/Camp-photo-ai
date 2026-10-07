@@ -55,7 +55,7 @@ def main() -> None:
         window.show()
         app.processEvents()
 
-        assert window.stack.count() == 7
+        assert window.stack.count() == 8
         assert window.minimumWidth() <= 820
         assert window.windowTitle().endswith("CampPhoto AI")
 
@@ -67,6 +67,7 @@ def main() -> None:
             "participants",
             "reports",
             "settings",
+            "about",
         ):
             window.navigate(key)
             app.processEvents()
