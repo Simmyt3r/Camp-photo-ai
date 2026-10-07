@@ -48,6 +48,11 @@ QToolTip {{
     border: none;
 }}
 
+#topStatusBar {{
+    background: white;
+    border-bottom: 1px solid {BORDER};
+}}
+
 #brandBlock {{
     background: transparent;
     border: none;
