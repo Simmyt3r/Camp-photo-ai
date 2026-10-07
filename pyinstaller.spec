@@ -142,7 +142,7 @@ gui_exe = EXE(
     strip=False,
     upx=False,
     console=False,
-    icon=str(PROJECT_ROOT / "assets" / "campphoto_logo.png"),
+    icon=str(PROJECT_ROOT / "assets" / "campphoto_logo.ico"),
 )
 
 gui_collect = COLLECT(
