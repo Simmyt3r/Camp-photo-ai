@@ -9,7 +9,7 @@ import numpy as np
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import (
-    QCheckBox, QFileDialog, QFormLayout, QHBoxLayout, QLabel, QLineEdit,
+    QCheckBox, QFileDialog, QFormLayout, QGridLayout, QHBoxLayout, QLabel, QLineEdit,
     QListWidget, QListWidgetItem, QMessageBox, QProgressBar, QPushButton,
     QVBoxLayout, QWidget,
 )
@@ -94,31 +94,34 @@ class RegistrationPage(QWidget):
             "Use 3–5 clear photos of the same person. Photos with zero or multiple faces are rejected.",
         )
 
-        photo_controls = QHBoxLayout()
+        photo_controls = QGridLayout()
+        photo_controls.setHorizontalSpacing(8)
+        photo_controls.setVerticalSpacing(8)
+
         import_btn = QPushButton("Import photos")
         import_btn.setObjectName("secondaryButton")
         import_btn.clicked.connect(self._import_photos)
-        photo_controls.addWidget(import_btn)
+        photo_controls.addWidget(import_btn, 0, 0)
 
         self.camera_btn = QPushButton("Open camera")
         self.camera_btn.clicked.connect(self._toggle_camera)
-        photo_controls.addWidget(self.camera_btn)
+        photo_controls.addWidget(self.camera_btn, 0, 1)
 
         self.capture_btn = QPushButton("Capture")
         self.capture_btn.setEnabled(False)
         self.capture_btn.clicked.connect(self._capture_from_camera)
-        photo_controls.addWidget(self.capture_btn)
+        photo_controls.addWidget(self.capture_btn, 0, 2)
 
         remove_btn = QPushButton("Remove selected")
         remove_btn.setObjectName("ghostButton")
         remove_btn.clicked.connect(self._remove_selected_photo)
-        photo_controls.addWidget(remove_btn)
+        photo_controls.addWidget(remove_btn, 1, 0, 1, 2)
 
         clear_btn = QPushButton("Clear")
         clear_btn.setObjectName("ghostButton")
         clear_btn.clicked.connect(self._clear_pending_photos)
-        photo_controls.addWidget(clear_btn)
-        photo_controls.addStretch(1)
+        photo_controls.addWidget(clear_btn, 1, 2)
+
         photos_card.body.addLayout(photo_controls)
 
         media_row = QHBoxLayout()
