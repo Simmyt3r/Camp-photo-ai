@@ -1,4 +1,4 @@
-"""Dashboard: live operational summary + high-frequency workflow shortcuts."""
+"""Dashboard: operational summary and next-best workflow action."""
 from __future__ import annotations
 
 from typing import Callable
@@ -11,22 +11,11 @@ from app.database.db import get_session
 from app.services.reporting import compute_dashboard_stats
 from app.ui.widgets import Card, PageHeader, StatTile
 
-TILE_SPECS = [
-    ("participants", "Registered Participants"),
+PRIMARY_TILES = [
+    ("participants", "Participants"),
     ("photos_processed", "Photos Processed"),
-    ("faces_detected", "Faces Detected"),
-    ("auto_matched", "Automatically Matched"),
+    ("auto_matched", "Matched"),
     ("needs_review", "Needs Review"),
-    ("unmatched", "Unmatched"),
-]
-
-ACTION_SPECS = [
-    ("Register Participant", "Add a camper and reference photos", "register", True),
-    ("Process Photos", "Scan a folder and sort matches", "process", True),
-    ("Review Matches", "Resolve uncertain face matches", "review", True),
-    ("Participants", "Search, edit, export or reprocess", "participants", False),
-    ("Reports", "Inspect previous processing runs", "reports", False),
-    ("Settings", "Tune matching and storage options", "settings", False),
 ]
 
 
@@ -35,6 +24,7 @@ class DashboardPage(QWidget):
         super().__init__()
         self.context = context
         self._on_navigate = on_navigate
+        self._continue_key = "register"
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(28, 26, 28, 26)
@@ -42,7 +32,7 @@ class DashboardPage(QWidget):
 
         layout.addWidget(PageHeader(
             "Dashboard",
-            "See what has been processed, what needs attention, and jump into the next task.",
+            "Your event-photo workspace: see what happened, what needs attention, and what to do next.",
         ))
 
         self.stats_grid = QGridLayout()
@@ -51,27 +41,47 @@ class DashboardPage(QWidget):
         layout.addLayout(self.stats_grid)
 
         self._tiles: dict[str, StatTile] = {}
-        for i, (key, label) in enumerate(TILE_SPECS):
+        for i, (key, label) in enumerate(PRIMARY_TILES):
             tile = StatTile(label, "0")
             self._tiles[key] = tile
-            self.stats_grid.addWidget(tile, i // 3, i % 3)
+            self.stats_grid.addWidget(tile, 0, i)
 
-        actions_card = Card(
-            "Quick actions",
-            "The three primary workflows are first. Everything else stays one click away.",
+        continue_card = Card(
+            "Continue workflow",
+            "CampPhoto AI prioritises the next useful action instead of making every screen shout at once.",
         )
-        actions_grid = QGridLayout()
-        actions_grid.setSpacing(10)
+        self.continue_title = QLabel("Register your first participant")
+        self.continue_title.setObjectName("cardTitle")
+        self.continue_body = QLabel(
+            "Add a participant and clear reference photos before processing an event folder."
+        )
+        self.continue_body.setObjectName("cardHint")
+        self.continue_body.setWordWrap(True)
+        self.continue_btn = QPushButton("Register Participant")
+        self.continue_btn.setObjectName("primaryButton")
+        self.continue_btn.setMinimumHeight(44)
+        self.continue_btn.clicked.connect(lambda: self._on_navigate(self._continue_key))
+        continue_card.body.addWidget(self.continue_title)
+        continue_card.body.addWidget(self.continue_body)
+        continue_card.body.addWidget(self.continue_btn, alignment=Qt.AlignLeft)
+        layout.addWidget(continue_card)
 
-        for i, (label, description, key, primary) in enumerate(ACTION_SPECS):
-            button = QPushButton(f"{label}\n{description}")
-            button.setMinimumHeight(58)
-            button.setCursor(Qt.PointingHandCursor)
-            button.setObjectName("primaryButton" if primary else "secondaryButton")
+        actions_card = Card("Other actions")
+        actions = QGridLayout()
+        actions.setSpacing(10)
+        for i, (label, key) in enumerate([
+            ("Register Participant", "register"),
+            ("Participants", "participants"),
+            ("Process Photos", "process"),
+            ("Review Matches", "review"),
+            ("Reports", "reports"),
+            ("Settings", "settings"),
+        ]):
+            button = QPushButton(label)
+            button.setObjectName("secondaryButton")
             button.clicked.connect(lambda checked=False, k=key: self._on_navigate(k))
-            actions_grid.addWidget(button, i // 3, i % 3)
-
-        actions_card.body.addLayout(actions_grid)
+            actions.addWidget(button, i // 3, i % 3)
+        actions_card.body.addLayout(actions)
         layout.addWidget(actions_card)
 
         self.health_card = Card("Session")
@@ -95,15 +105,37 @@ class DashboardPage(QWidget):
             for key, tile in self._tiles.items():
                 tile.set_value(f"{stats.get(key, 0):,}")
 
+            participants = int(stats.get("participants", 0) or 0)
             needs_review = int(stats.get("needs_review", 0) or 0)
-            next_step = (
-                f"{needs_review:,} item(s) are waiting for human review."
-                if needs_review
-                else "No matches are waiting for human review."
-            )
+
+            if participants == 0:
+                self._continue_key = "register"
+                self.continue_title.setText("Register your first participant")
+                self.continue_body.setText(
+                    "Create a consented participant profile and add clear reference photos."
+                )
+                self.continue_btn.setText("Register Participant")
+            elif needs_review > 0:
+                self._continue_key = "review"
+                self.continue_title.setText(f"Review {needs_review:,} uncertain match(es)")
+                self.continue_body.setText(
+                    "The AI found possible matches that need a human decision before delivery."
+                )
+                self.continue_btn.setText(f"Review {needs_review:,} Matches")
+            else:
+                self._continue_key = "process"
+                self.continue_title.setText("Process event photos")
+                self.continue_body.setText(
+                    "Participants are ready and no review items are waiting. Select an event folder to continue."
+                )
+                self.continue_btn.setText("Process Event Photos")
+
             self.status_note.setText(
-                f"Processing mode: {self.context.mode.upper()} ({self.context.provider}). "
-                f"{next_step} Data is stored locally on this computer."
+                f"Face model: {self.context.settings.embedding_model_name} • "
+                f"Mode: {self.context.mode.upper()} • "
+                f"Faces detected: {int(stats.get('faces_detected', 0) or 0):,} • "
+                f"Unmatched: {int(stats.get('unmatched', 0) or 0):,} • "
+                "Data stays on this computer."
             )
         except Exception as exc:
             for tile in self._tiles.values():
