@@ -31,20 +31,28 @@ with Image.open(ICON_PNG) as logo:
     logo.convert("RGBA").save(
         ICON_ICO,
         format="ICO",
+        # Store frames as Windows DIB/BMP data rather than PNG-compressed
+        # icon frames. This is slightly larger, but avoids a Pillow/PyInstaller
+        # decoding failure observed on GitHub's Windows runner while embedding
+        # the executable icon.
+        bitmap_format="bmp",
         sizes=[
             (16, 16),
-            (24, 24),
             (32, 32),
             (48, 48),
             (64, 64),
-            (96, 96),
             (128, 128),
             (256, 256),
         ],
     )
 
+# Do a real decode of every icon size. Image.verify() only validates the
+# container and did not catch the malformed/undecodable frame that previously
+# failed later inside PyInstaller while copying the icon to the EXE.
 with Image.open(ICON_ICO) as icon_file:
-    icon_file.verify()
+    for icon_size in sorted(icon_file.ico.sizes()):
+        frame = icon_file.ico.getimage(icon_size)
+        frame.load()
 
 
 # ---------------------------------------------------------------------------
