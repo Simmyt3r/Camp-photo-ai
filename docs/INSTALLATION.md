@@ -123,9 +123,10 @@ it yourself" below), using it needs no Python installation at all:
    `output/` folders right next to the `.exe`, and standard Windows
    accounts can't write to Program Files without admin rights.
 2. Double-click `CampPhotoAI.exe`.
-3. In the standard public build, first face-recognition use downloads the
-   model pack once. In an **offline bundle** built with a locally supplied
-   `buffalo_l` model, no first-run model download is needed.
+3. During the current **build-validation phase**, the GitHub Actions Windows
+   artifact includes the verified `buffalo_l` model already. No first-run
+   model download is required for that artifact. Source installs still use
+   the automatic download flow when the model is absent.
 
 The CLI equivalent (`camp-photo-ai-cli.exe`) works the same way from a
 terminal: `camp-photo-ai-cli.exe --help`.
@@ -195,12 +196,16 @@ CampPhotoAI-Windows-Offline.zip
 A recipient can unzip that package and run `CampPhotoAI.exe` without a
 first-run model download.
 
-The normal public GitHub Actions package intentionally remains model-free.
-That avoids automatically redistributing third-party pretrained weights.
-Before distributing an offline bundle to customers or as part of a paid
-product, obtain model rights appropriate for that use or replace Buffalo
-with a commercially suitable model. Camp Photo AI's source-code licence
-does not grant rights to InsightFace's pretrained weights.
+During the current product build/validation phase, the GitHub Actions
+Windows workflow also fetches the official `buffalo_l.zip`, verifies the
+official SHA-256, and injects the five ONNX files into the generated GUI
+and CLI artifacts. The model bytes are **not stored in Git history**; they
+exist only inside the generated build artifacts.
+
+Before distributing a customer/commercial release, obtain model rights
+appropriate for that use or replace Buffalo with a commercially suitable
+model. Camp Photo AI's source-code licence does not grant rights to
+InsightFace's pretrained weights.
 
 No Windows installer (`.msi`/setup wizard) is built here -- just the
 `--onedir` PyInstaller output, which is a complete, runnable folder you
