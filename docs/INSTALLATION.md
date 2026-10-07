@@ -123,8 +123,9 @@ it yourself" below), using it needs no Python installation at all:
    `output/` folders right next to the `.exe`, and standard Windows
    accounts can't write to Program Files without admin rights.
 2. Double-click `CampPhotoAI.exe`.
-3. First launch downloads the model pack (~350MB, one time, needs
-   internet) -- same as the source install above.
+3. In the standard public build, first face-recognition use downloads the
+   model pack once. In an **offline bundle** built with a locally supplied
+   `buffalo_l` model, no first-run model download is needed.
 
 The CLI equivalent (`camp-photo-ai-cli.exe`) works the same way from a
 terminal: `camp-photo-ai-cli.exe --help`.
@@ -152,6 +153,54 @@ build to take several minutes and the output folder to be large
 (the Linux test build was ~630-770MB per target, dominated by
 onnxruntime/insightface/OpenCV/PySide6) -- normal for this dependency
 stack, not a sign something went wrong.
+
+### Building an offline Windows package with buffalo_l included
+
+If you already have the official `buffalo_l` model locally, CampPhoto AI
+can bundle it into the frozen Windows application so recipient computers do
+not need to download the model on first use.
+
+Put either the extracted model folder here:
+
+```text
+models/
+└── buffalo_l/
+    ├── det_10g.onnx
+    ├── 1k3d68.onnx
+    ├── 2d106det.onnx
+    ├── genderage.onnx
+    └── w600k_r50.onnx
+```
+
+or place the archive at:
+
+```text
+models/buffalo_l.zip
+```
+
+Then on Windows run:
+
+```bat
+scripts\build_windows_offline.bat
+```
+
+The script builds the normal GUI and CLI targets, validates the local model,
+copies the five required ONNX files into each frozen application's
+`models/buffalo_l/` folder, and creates:
+
+```text
+CampPhotoAI-Windows-Offline.zip
+```
+
+A recipient can unzip that package and run `CampPhotoAI.exe` without a
+first-run model download.
+
+The normal public GitHub Actions package intentionally remains model-free.
+That avoids automatically redistributing third-party pretrained weights.
+Before distributing an offline bundle to customers or as part of a paid
+product, obtain model rights appropriate for that use or replace Buffalo
+with a commercially suitable model. Camp Photo AI's source-code licence
+does not grant rights to InsightFace's pretrained weights.
 
 No Windows installer (`.msi`/setup wizard) is built here -- just the
 `--onedir` PyInstaller output, which is a complete, runnable folder you
