@@ -6,6 +6,11 @@ GUI entry point.
 Bootstraps the local processing context, applies CampPhoto AI branding,
 requires acceptance of the current responsible-use agreement on first run,
 then launches the main desktop workspace.
+
+The packaged Windows executable also supports --smoke-test. That mode
+constructs the real frozen UI offscreen and exits immediately, allowing CI
+to prove that the produced EXE can actually start instead of merely checking
+that a file with an .exe suffix exists.
 """
 from __future__ import annotations
 
@@ -24,6 +29,12 @@ from app.ui.styles import STYLESHEET
 
 
 def main() -> None:
+    smoke_test = "--smoke-test" in sys.argv
+    if smoke_test:
+        # Qt sees argv too. Remove our private validation flag before
+        # constructing QApplication so it never needs to understand it.
+        sys.argv = [arg for arg in sys.argv if arg != "--smoke-test"]
+
     app = QApplication(sys.argv)
     app.setApplicationName(PRODUCT_NAME)
     app.setApplicationDisplayName(PRODUCT_NAME)
@@ -37,6 +48,18 @@ def main() -> None:
         app.setWindowIcon(QIcon(str(logo_path)))
 
     context = AppContext.bootstrap()
+
+    if smoke_test:
+        # Build and briefly show the same MainWindow users receive. Running
+        # with QT_QPA_PLATFORM=offscreen in CI exercises frozen imports,
+        # bootstrap, settings/database initialization, asset lookup and page
+        # construction without blocking on the first-run agreement dialog.
+        window = MainWindow(context)
+        window.show()
+        app.processEvents()
+        window.close()
+        app.processEvents()
+        return
 
     if context.settings.user_agreement_version != AGREEMENT_VERSION:
         agreement = UserAgreementDialog(require_acceptance=True)

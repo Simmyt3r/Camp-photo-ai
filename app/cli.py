@@ -159,6 +159,58 @@ def rebuild_cache():
     click.echo(f"Cleared {count} cached entries.")
 
 
+@cli.command(name="self-check")
+def self_check():
+    """Verify that the packaged runtime can bootstrap and that the bundled
+    face-model files are present and readable. This intentionally does not
+    run inference; it is a fast release-gate check for the Windows artifact."""
+    from sqlalchemy import text
+
+    from app.services._face_analysis_loader import BUFFALO_L_REQUIRED_FILES
+
+    context = _bootstrap()
+    settings = context.settings
+    failures: list[str] = []
+
+    runtime_paths = {
+        "output directory": Path(settings.output_dir),
+        "models directory": Path(settings.models_dir),
+        "logs directory": Path(settings.logs_dir),
+        "database directory": Path(settings.database_path).parent,
+    }
+
+    for label, path in runtime_paths.items():
+        if not path.is_dir():
+            failures.append(f"{label} missing: {path}")
+
+    try:
+        with get_session() as session:
+            if session.execute(text("SELECT 1")).scalar_one() != 1:
+                failures.append("SQLite health query returned an unexpected result")
+    except Exception as exc:
+        failures.append(f"SQLite health query failed: {exc}")
+
+    model_dir = Path(settings.models_dir) / settings.embedding_model_name
+    for filename in sorted(BUFFALO_L_REQUIRED_FILES):
+        model_file = model_dir / filename
+        if not model_file.is_file():
+            failures.append(f"bundled model file missing: {model_file}")
+        elif model_file.stat().st_size <= 0:
+            failures.append(f"bundled model file is empty: {model_file}")
+
+    if failures:
+        click.echo("CampPhoto AI self-check FAILED:")
+        for failure in failures:
+            click.echo(f"  x {failure}")
+        raise SystemExit(1)
+
+    click.echo("CampPhoto AI self-check PASSED")
+    click.echo(f"  Runtime: {Path(sys.executable).resolve()}")
+    click.echo(f"  Provider: {context.provider}")
+    click.echo(f"  Database: {settings.database_path}")
+    click.echo(f"  Model: {model_dir}")
+
+
 @cli.command(name="review-queue")
 @click.option("--limit", default=20)
 def review_queue(limit):

@@ -5,6 +5,10 @@ on:
     branches:
       - main
 
+  pull_request:
+    branches:
+      - main
+
   workflow_dispatch:
 
 permissions:
@@ -179,6 +183,29 @@ jobs:
           }
 
           Write-Host "buffalo_l is bundled into both Windows applications."
+
+
+      - name: Runtime smoke-test packaged applications
+        shell: pwsh
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: |
+          Write-Host "Running packaged CLI self-check..."
+          & "dist/camp-photo-ai-cli/camp-photo-ai-cli.exe" self-check
+          if ($LASTEXITCODE -ne 0) {
+            Write-Error "Packaged CLI self-check failed with exit code $LASTEXITCODE"
+            exit $LASTEXITCODE
+          }
+
+          Write-Host "Starting packaged GUI in offscreen smoke-test mode..."
+          $gui = Start-Process -FilePath "dist/CampPhotoAI/CampPhotoAI.exe" -ArgumentList "--smoke-test" -Wait -PassThru
+
+          if ($gui.ExitCode -ne 0) {
+            Write-Error "Packaged GUI smoke test failed with exit code $($gui.ExitCode)"
+            exit $gui.ExitCode
+          }
+
+          Write-Host "Packaged GUI and CLI runtime checks passed."
 
 
       - name: Verify GUI executable
