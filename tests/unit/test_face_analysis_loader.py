@@ -11,7 +11,7 @@ from app.services._face_analysis_loader import (
 
 
 def _write_model_files(model_dir: Path) -> None:
-    model_dir.mkdir(parents=True)
+    model_dir.mkdir(parents=True, exist_ok=True)
     for name in BUFFALO_L_REQUIRED_FILES:
         (model_dir / name).write_bytes(b"x")
 
