@@ -1,15 +1,15 @@
-"""Dashboard: live stats + navigation shortcuts (section 17)."""
+"""Dashboard: live operational summary + high-frequency workflow shortcuts."""
 from __future__ import annotations
 
 from typing import Callable
 
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QGridLayout, QHBoxLayout, QLabel, QPushButton, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QGridLayout, QLabel, QPushButton, QVBoxLayout, QWidget
 
 from app.bootstrap import AppContext
 from app.database.db import get_session
 from app.services.reporting import compute_dashboard_stats
-from app.ui.widgets import StatTile
+from app.ui.widgets import Card, PageHeader, StatTile
 
 TILE_SPECS = [
     ("participants", "Registered Participants"),
@@ -20,6 +20,15 @@ TILE_SPECS = [
     ("unmatched", "Unmatched"),
 ]
 
+ACTION_SPECS = [
+    ("Register Participant", "Add a camper and reference photos", "register", True),
+    ("Process Photos", "Scan a folder and sort matches", "process", True),
+    ("Review Matches", "Resolve uncertain face matches", "review", True),
+    ("Participants", "Search, edit, export or reprocess", "participants", False),
+    ("Reports", "Inspect previous processing runs", "reports", False),
+    ("Settings", "Tune matching and storage options", "settings", False),
+]
+
 
 class DashboardPage(QWidget):
     def __init__(self, context: AppContext, on_navigate: Callable[[str], None]):
@@ -28,15 +37,17 @@ class DashboardPage(QWidget):
         self._on_navigate = on_navigate
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(32, 32, 32, 32)
-        layout.setSpacing(20)
+        layout.setContentsMargins(28, 26, 28, 26)
+        layout.setSpacing(18)
 
-        header = QLabel("Dashboard")
-        header.setObjectName("pageTitle")
-        layout.addWidget(header)
+        layout.addWidget(PageHeader(
+            "Dashboard",
+            "See what has been processed, what needs attention, and jump into the next task.",
+        ))
 
         self.stats_grid = QGridLayout()
-        self.stats_grid.setSpacing(16)
+        self.stats_grid.setHorizontalSpacing(12)
+        self.stats_grid.setVerticalSpacing(12)
         layout.addLayout(self.stats_grid)
 
         self._tiles: dict[str, StatTile] = {}
@@ -45,39 +56,33 @@ class DashboardPage(QWidget):
             self._tiles[key] = tile
             self.stats_grid.addWidget(tile, i // 3, i % 3)
 
-        layout.addSpacing(4)
-        actions_label = QLabel("Actions")
-        actions_label.setObjectName("sectionLabel")
-        layout.addWidget(actions_label)
+        actions_card = Card(
+            "Quick actions",
+            "The three primary workflows are first. Everything else stays one click away.",
+        )
+        actions_grid = QGridLayout()
+        actions_grid.setSpacing(10)
 
-        actions_row = QHBoxLayout()
-        actions_row.setSpacing(12)
-        self._add_action(actions_row, "Register Participant", lambda: self._on_navigate("register"))
-        self._add_action(actions_row, "Process Photos", lambda: self._on_navigate("process"))
-        self._add_action(actions_row, "Review Matches", lambda: self._on_navigate("review"))
-        self._add_action(actions_row, "Participants", lambda: self._on_navigate("participants"))
-        self._add_action(actions_row, "Reports", lambda: self._on_navigate("reports"))
-        self._add_action(actions_row, "Settings", lambda: self._on_navigate("settings"))
-        actions_row.addStretch(1)
-        layout.addLayout(actions_row)
+        for i, (label, description, key, primary) in enumerate(ACTION_SPECS):
+            button = QPushButton(f"{label}\n{description}")
+            button.setMinimumHeight(58)
+            button.setCursor(Qt.PointingHandCursor)
+            button.setObjectName("primaryButton" if primary else "secondaryButton")
+            button.clicked.connect(lambda checked=False, k=key: self._on_navigate(k))
+            actions_grid.addWidget(button, i // 3, i % 3)
 
+        actions_card.body.addLayout(actions_grid)
+        layout.addWidget(actions_card)
+
+        self.health_card = Card("Session")
         self.status_note = QLabel("")
-        self.status_note.setObjectName("hintLabel")
-        layout.addWidget(self.status_note)
+        self.status_note.setObjectName("cardHint")
+        self.status_note.setWordWrap(True)
+        self.health_card.body.addWidget(self.status_note)
+        layout.addWidget(self.health_card)
 
         layout.addStretch(1)
         self.refresh()
-
-    def _add_action(self, row: QHBoxLayout, label: str, handler, enabled: bool = True, tooltip: str | None = None) -> None:
-        btn = QPushButton(label)
-        btn.setObjectName("primaryButton" if enabled else "disabledButton")
-        btn.setCursor(Qt.PointingHandCursor if enabled else Qt.ArrowCursor)
-        btn.setEnabled(enabled)
-        if tooltip:
-            btn.setToolTip(tooltip)
-        if handler:
-            btn.clicked.connect(handler)
-        row.addWidget(btn)
 
     def on_shown(self) -> None:
         self.refresh()
@@ -86,13 +91,21 @@ class DashboardPage(QWidget):
         try:
             with get_session() as session:
                 stats = compute_dashboard_stats(session)
+
             for key, tile in self._tiles.items():
                 tile.set_value(f"{stats.get(key, 0):,}")
+
+            needs_review = int(stats.get("needs_review", 0) or 0)
+            next_step = (
+                f"{needs_review:,} item(s) are waiting for human review."
+                if needs_review
+                else "No matches are waiting for human review."
+            )
             self.status_note.setText(
-                f"Mode: {self.context.mode.upper()} ({self.context.provider})  |  "
-                f"Database: {self.context.settings.database_path}"
+                f"Processing mode: {self.context.mode.upper()} ({self.context.provider}). "
+                f"{next_step} Data is stored locally on this computer."
             )
         except Exception as exc:
             for tile in self._tiles.values():
                 tile.set_value("--")
-            self.status_note.setText(f"Could not load stats: {exc}")
+            self.status_note.setText(f"Could not load dashboard statistics: {exc}")

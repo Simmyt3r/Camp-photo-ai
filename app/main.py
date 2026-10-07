@@ -21,6 +21,9 @@ from app.ui.styles import STYLESHEET
 
 def main() -> None:
     app = QApplication(sys.argv)
+    app.setApplicationName("CampPhoto AI")
+    app.setOrganizationName("Silabs")
+    app.setStyle("Fusion")
     app.setStyleSheet(STYLESHEET)
 
     context = AppContext.bootstrap()
