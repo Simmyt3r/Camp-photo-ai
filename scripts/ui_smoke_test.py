@@ -16,7 +16,7 @@ from PySide6.QtWidgets import QApplication
 
 from app.bootstrap import AppContext
 from app.config.settings import Settings
-from app.database.db import init_engine
+from app.database.db import get_engine, init_engine
 from app.services.face_embedding import FaceEmbeddingService
 from app.ui.main_window import MainWindow
 from app.ui.styles import STYLESHEET
@@ -72,6 +72,8 @@ def main() -> None:
             app.processEvents()
 
         window.close()
+        app.processEvents()
+        get_engine().dispose()
         app.processEvents()
 
 
