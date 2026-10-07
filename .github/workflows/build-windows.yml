@@ -101,6 +101,68 @@ jobs:
           python -m PyInstaller pyinstaller.spec --noconfirm --clean
 
 
+      - name: Download official buffalo_l model for build validation
+        shell: pwsh
+        env:
+          BUFFALO_L_URL: https://github.com/deepinsight/insightface/releases/download/model-zoo/buffalo_l.zip
+          BUFFALO_L_SHA256: 80ffe37d8a5940d59a7384c201a2a38d4741f2f3c51eef46ebb28218a7b0ca2f
+        run: |
+          New-Item -ItemType Directory -Force -Path ".build-models" | Out-Null
+          $archive = ".build-models/buffalo_l.zip"
+
+          Write-Host "Downloading official InsightFace buffalo_l model..."
+          Invoke-WebRequest -Uri $env:BUFFALO_L_URL -OutFile $archive
+
+          if (-not (Test-Path $archive)) {
+            Write-Error "buffalo_l.zip was not downloaded"
+            exit 1
+          }
+
+          $size = (Get-Item $archive).Length
+          if ($size -lt 250000000) {
+            Write-Error "buffalo_l.zip is unexpectedly small: $size bytes"
+            exit 1
+          }
+
+          $actual = (Get-FileHash $archive -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($actual -ne $env:BUFFALO_L_SHA256.ToLowerInvariant()) {
+            Write-Error "buffalo_l checksum mismatch. Expected $env:BUFFALO_L_SHA256, got $actual"
+            exit 1
+          }
+
+          Write-Host "buffalo_l download verified successfully."
+
+      - name: Bundle buffalo_l into Windows applications
+        shell: pwsh
+        run: |
+          python scripts/bundle_buffalo_model.py --source ".build-models/buffalo_l.zip" --required
+
+          $required = @(
+            "det_10g.onnx",
+            "1k3d68.onnx",
+            "2d106det.onnx",
+            "genderage.onnx",
+            "w600k_r50.onnx"
+          )
+
+          foreach ($target in @("dist/CampPhotoAI", "dist/camp-photo-ai-cli")) {
+            foreach ($name in $required) {
+              $modelFile = Join-Path $target "models/buffalo_l/$name"
+              if (-not (Test-Path $modelFile)) {
+                Write-Error "Bundled model file missing: $modelFile"
+                exit 1
+              }
+
+              if ((Get-Item $modelFile).Length -le 0) {
+                Write-Error "Bundled model file is empty: $modelFile"
+                exit 1
+              }
+            }
+          }
+
+          Write-Host "buffalo_l is bundled into both Windows applications."
+
+
       - name: Verify GUI executable
         shell: pwsh
         run: |
