@@ -75,6 +75,13 @@ jobs:
         run: |
           python -m pytest
 
+      - name: Smoke-test desktop UI
+        shell: pwsh
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: |
+          python scripts/ui_smoke_test.py
+
 
       - name: Clean previous build files
         shell: pwsh
