@@ -12,6 +12,7 @@ if str(REPO_ROOT) not in sys.path:
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
+from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import QApplication
 
 from app.bootstrap import AppContext
@@ -54,6 +55,8 @@ def main() -> None:
             ),
         )
         assert app_logo_path().is_file()
+        logo = QPixmap(str(app_logo_path()))
+        assert not logo.isNull(), "CampPhoto AI logo PNG could not be decoded by Qt"
 
         agreement = UserAgreementDialog(require_acceptance=False)
         agreement.show()
