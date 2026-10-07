@@ -106,6 +106,29 @@ def _model_is_complete(model_dir: Path) -> bool:
     )
 
 
+def _locate_extracted_model(extract_root: Path) -> Path | None:
+    """Find a complete buffalo_l model regardless of ZIP folder layout.
+
+    InsightFace model archives have existed both with a top-level
+    `buffalo_l/` directory and with the ONNX files at the archive root.
+    Searching by a required model file also tolerates one extra wrapper
+    directory without guessing the archive structure.
+    """
+    if _model_is_complete(extract_root):
+        return extract_root
+
+    named = extract_root / "buffalo_l"
+    if _model_is_complete(named):
+        return named
+
+    for anchor in extract_root.rglob("w600k_r50.onnx"):
+        candidate = anchor.parent
+        if _model_is_complete(candidate):
+            return candidate
+
+    return None
+
+
 def _find_existing_model_dir(models_dir: str | None, model_name: str) -> Path | None:
     """
     Check the locations that may already contain the model.
@@ -257,33 +280,15 @@ def _download_buffalo_l(model_dir: Path, progress_callback: ModelProgressCallbac
         with zipfile.ZipFile(zip_path, "r") as archive:
             archive.extractall(temp_extract)
 
-        # The archive normally contains a buffalo_l directory.
-        extracted_model = temp_extract / "buffalo_l"
+        extracted_model = _locate_extracted_model(temp_extract)
 
-        if not extracted_model.is_dir():
-            possible_dirs = [
-                p
-                for p in temp_extract.iterdir()
-                if p.is_dir()
-                and all((p / filename).is_file() for filename in BUFFALO_L_REQUIRED_FILES)
-            ]
-
-            if len(possible_dirs) == 1:
-                extracted_model = possible_dirs[0]
-
-        if not _model_is_complete(extracted_model):
-            missing = sorted(
-                BUFFALO_L_REQUIRED_FILES
-                - {
-                    p.name
-                    for p in extracted_model.iterdir()
-                    if p.is_file()
-                }
-            ) if extracted_model.is_dir() else sorted(BUFFALO_L_REQUIRED_FILES)
-
+        if extracted_model is None:
+            found_onnx = {p.name for p in temp_extract.rglob("*.onnx") if p.is_file()}
+            missing = sorted(BUFFALO_L_REQUIRED_FILES - found_onnx)
             raise RuntimeError(
-                "buffalo_l was downloaded but the extracted model is incomplete. "
-                f"Missing files: {', '.join(missing)}"
+                "buffalo_l was downloaded and verified, but its extracted layout "
+                "did not contain a complete model. "
+                f"Missing files: {', '.join(missing) if missing else 'none; layout was unexpected'}"
             )
 
         if model_dir.exists():
@@ -319,6 +324,7 @@ def _download_buffalo_l(model_dir: Path, progress_callback: ModelProgressCallbac
 
         raise RuntimeError(
             "Could not download or install the buffalo_l face model. "
+            f"Root cause: {exc}. "
             "Check your internet connection, firewall/antivirus, and free disk space. "
             f"Manual fallback: download {BUFFALO_L_URL} in a browser, extract it, "
             f"and place the five .onnx files inside: {model_dir}"
