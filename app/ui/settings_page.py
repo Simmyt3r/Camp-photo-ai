@@ -5,7 +5,7 @@ from dataclasses import replace
 
 from PySide6.QtWidgets import (
     QCheckBox, QComboBox, QDoubleSpinBox, QFileDialog, QFormLayout, QHBoxLayout,
-    QLabel, QLineEdit, QMessageBox, QPushButton, QScrollArea, QSpinBox,
+    QLabel, QLineEdit, QMessageBox, QPushButton, QScrollArea, QSpinBox, QFrame,
     QVBoxLayout, QWidget,
 )
 
@@ -38,7 +38,7 @@ class SettingsPage(QWidget):
 
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
-        scroll.setFrameShape(QScrollArea.NoFrame)
+        scroll.setFrameShape(QFrame.NoFrame)
 
         content = QWidget()
         content_layout = QVBoxLayout(content)
