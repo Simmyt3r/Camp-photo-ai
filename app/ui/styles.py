@@ -23,14 +23,17 @@ DANGER_SOFT = "#FEF2F2"
 
 STYLESHEET = f"""
 QWidget {{
-    background: {CONTENT_BG};
     color: {TEXT_PRIMARY};
     font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
     font-size: 13px;
 }}
 
-QMainWindow, QStackedWidget {{
+QMainWindow, QDialog, QStackedWidget {{
     background: {CONTENT_BG};
+}}
+
+QLabel, QCheckBox {{
+    background: transparent;
 }}
 
 QToolTip {{
