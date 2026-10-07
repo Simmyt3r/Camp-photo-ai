@@ -13,6 +13,7 @@ from app.bootstrap import AppContext
 from app.database.db import get_session
 from app.database.models import ProcessingRun
 from app.services.reporting import build_report
+from app.ui.activity import notify_activity
 from app.ui.widgets import Card, PageHeader
 
 
@@ -196,3 +197,4 @@ class ReportsPage(QWidget):
             "Report exported",
             f"The report was written to:\n{dest}",
         )
+        notify_activity(f"Report exported as {fmt.upper()}: {dest.name}", "success")
