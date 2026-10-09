@@ -11,12 +11,14 @@ from PySide6.QtWidgets import (
 )
 
 from app.bootstrap import AppContext
+from app.services.licensing import validate_installed_license
 from app.ui.about_page import AboutPage
 from app.ui.activity import activity_bus
 from app.ui.branding import (
     COMPANY_NAME, PRODUCT_NAME, SUPPORT_EMAIL, SUPPORT_PHONE, app_logo_path,
 )
 from app.ui.dashboard_page import DashboardPage
+from app.ui.license_page import LicensePage
 from app.ui.participants_page import ParticipantsPage
 from app.ui.processing_page import ProcessingPage
 from app.ui.registration_page import RegistrationPage
@@ -33,6 +35,7 @@ NAV_ITEMS = [
     ("review", "Review Matches", QStyle.SP_DialogApplyButton),
     ("reports", "Reports", QStyle.SP_FileIcon),
     ("settings", "Settings", QStyle.SP_FileDialogDetailedView),
+    ("license", "Licence & Activation", QStyle.SP_DialogYesButton),
     ("about", "About & Contact", QStyle.SP_MessageBoxInformation),
 ]
 
@@ -90,6 +93,7 @@ class MainWindow(QMainWindow):
             "review": ReviewPage(context),
             "reports": ReportsPage(context),
             "settings": SettingsPage(context),
+            "license": LicensePage(context),
             "about": AboutPage(context),
         }
         for page in self._pages.values():
@@ -190,6 +194,12 @@ class MainWindow(QMainWindow):
         model = QLabel("● Model Ready" if self._model_ready() else "○ Model not ready")
         model.setObjectName("statusChipReady" if self._model_ready() else "statusChip")
         row.addWidget(model)
+
+        licence = validate_installed_license()
+        licence_chip = QLabel("● Pilot Licensed" if licence.valid else "○ Licence issue")
+        licence_chip.setObjectName("statusChipReady" if licence.valid else "statusChip")
+        licence_chip.setToolTip(licence.reason)
+        row.addWidget(licence_chip)
 
         mode = QLabel(self.context.mode.upper())
         mode.setObjectName("statusChip")
