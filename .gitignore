@@ -48,3 +48,6 @@ license_keys/
 
 # Local documents / scratch files
 *.docx
+
+# Locally issued customer licences
+issued_licenses/
