@@ -82,6 +82,7 @@ with Image.open(ICON_ICO) as icon_file:
 collected_binaries = []
 collected_datas = [
     (str(PROJECT_ROOT / "assets" / "campphoto_logo.png"), "assets"),
+    (str(PROJECT_ROOT / "assets" / "license_public_key.pem"), "assets"),
 ]
 collected_hiddenimports = []
 
