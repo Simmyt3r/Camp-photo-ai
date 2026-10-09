@@ -19,6 +19,8 @@ from app.bootstrap import AppContext
 from app.config.settings import Settings
 from app.database.db import get_engine, init_engine
 from app.services.face_embedding import FaceEmbeddingService
+from app.services.licensing import public_key_path
+from app.ui.activation_dialog import ActivationDialog
 from app.ui.agreement_dialog import UserAgreementDialog
 from app.ui.branding import app_logo_path
 from app.ui.main_window import MainWindow
@@ -55,6 +57,7 @@ def main() -> None:
             ),
         )
         assert app_logo_path().is_file()
+        assert public_key_path().is_file()
         logo = QPixmap(str(app_logo_path()))
         assert not logo.isNull(), "CampPhoto AI logo PNG could not be decoded by Qt"
 
@@ -64,11 +67,17 @@ def main() -> None:
         agreement.close()
         app.processEvents()
 
+        activation = ActivationDialog()
+        activation.show()
+        app.processEvents()
+        activation.close()
+        app.processEvents()
+
         window = MainWindow(context)
         window.show()
         app.processEvents()
 
-        assert window.stack.count() == 8
+        assert window.stack.count() == 9
         assert window.minimumWidth() <= 820
         assert window.windowTitle().endswith("CampPhoto AI")
 
@@ -80,6 +89,7 @@ def main() -> None:
             "participants",
             "reports",
             "settings",
+            "license",
             "about",
         ):
             window.navigate(key)
