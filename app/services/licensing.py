@@ -13,6 +13,7 @@ Phase-one licences are:
 from __future__ import annotations
 
 import base64
+import binascii
 import hashlib
 import json
 import platform
@@ -191,7 +192,7 @@ def verify_license_document(
 
     except InvalidSignature:
         return LicenseValidation(False, "Licence signature is invalid or the file was modified.")
-    except (ValueError, TypeError, KeyError, json.JSONDecodeError) as exc:
+    except (ValueError, TypeError, KeyError, binascii.Error) as exc:
         return LicenseValidation(False, f"Licence could not be read: {exc}")
 
 
@@ -204,7 +205,7 @@ def validate_installed_license() -> LicenseValidation:
         return LicenseValidation(False, "CampPhoto AI has not been activated on this device.")
     try:
         document = read_license_document(LICENSE_PATH)
-    except (OSError, json.JSONDecodeError) as exc:
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
         return LicenseValidation(False, f"Installed licence could not be read: {exc}")
     return verify_license_document(document)
 
@@ -212,7 +213,7 @@ def validate_installed_license() -> LicenseValidation:
 def install_license(source: Path) -> LicenseValidation:
     try:
         document = read_license_document(source)
-    except (OSError, json.JSONDecodeError) as exc:
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
         return LicenseValidation(False, f"Licence file could not be read: {exc}")
 
     validation = verify_license_document(document)
