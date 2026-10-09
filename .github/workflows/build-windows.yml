@@ -208,6 +208,21 @@ jobs:
           Write-Host "Packaged GUI and CLI runtime checks passed."
 
 
+      - name: Remove build-machine runtime state
+        shell: pwsh
+        run: |
+          foreach ($target in @("dist/CampPhotoAI", "dist/camp-photo-ai-cli")) {
+            foreach ($runtimeDir in @("data", "logs", "output")) {
+              $runtimePath = Join-Path $target $runtimeDir
+              if (Test-Path $runtimePath) {
+                Remove-Item -Recurse -Force $runtimePath
+              }
+            }
+          }
+
+          Write-Host "Removed settings, database, logs, and smoke-test output created on the GitHub runner."
+
+
       - name: Verify GUI executable
         shell: pwsh
         run: |
@@ -235,13 +250,18 @@ jobs:
         run: |
           New-Item -ItemType Directory -Force -Path release | Out-Null
 
-          Copy-Item -Recurse `
-            "dist/CampPhotoAI" `
-            "release/CampPhotoAI"
+          # Put the GUI application directly at the artifact root so users
+          # extract once and immediately see CampPhotoAI.exe.
+          Copy-Item -Recurse -Force `
+            "dist/CampPhotoAI/*" `
+            "release/"
 
-          Copy-Item -Recurse `
-            "dist/camp-photo-ai-cli" `
-            "release/camp-photo-ai-cli"
+          # Keep the optional command-line build out of the GUI's runtime
+          # folder while still shipping it in the complete package.
+          New-Item -ItemType Directory -Force -Path "release/CLI" | Out-Null
+          Copy-Item -Recurse -Force `
+            "dist/camp-photo-ai-cli/*" `
+            "release/CLI/"
 
           foreach ($file in @("START_HERE.txt", "USER_AGREEMENT.txt", "CONTACT.txt")) {
             Copy-Item `
@@ -254,20 +274,32 @@ jobs:
           }
 
 
-      - name: Create ZIP package
+      - name: Verify clean release layout
         shell: pwsh
         run: |
-          Compress-Archive `
-            -Path "release/*" `
-            -DestinationPath "CampPhotoAI-Windows-x64.zip" `
-            -Force
+          if (-not (Test-Path "release/CampPhotoAI.exe")) {
+            Write-Error "CampPhotoAI.exe is not at the release root"
+            exit 1
+          }
+
+          if (-not (Test-Path "release/CLI/camp-photo-ai-cli.exe")) {
+            Write-Error "CLI executable is missing from release/CLI"
+            exit 1
+          }
+
+          if (Test-Path "release/data/settings.json") {
+            Write-Error "Build-machine settings.json leaked into the release"
+            exit 1
+          }
+
+          Write-Host "Release is flat, portable, and free of CI runtime state."
 
 
       - name: Upload complete Windows package
         uses: actions/upload-artifact@v7
         with:
           name: CampPhotoAI-Windows-x64
-          path: CampPhotoAI-Windows-x64.zip
+          path: release/*
           if-no-files-found: error
           retention-days: 30
 
