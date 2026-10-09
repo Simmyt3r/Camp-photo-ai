@@ -3,14 +3,25 @@ CampPhoto AI
 
 by Simeon's Laboratories And Co Technologies Ltd
 
-1. Open the CampPhotoAI folder.
-2. Double-click CampPhotoAI.exe.
+WINDOWS QUICK START
+
+1. Extract the downloaded CampPhotoAI-Windows-x64 artifact once.
+   Use a writable folder such as Documents, Desktop, or another folder you own.
+   Do not run the application from inside the ZIP file.
+2. In the extracted folder, double-click CampPhotoAI.exe.
 3. Read and accept the first-run User Agreement.
 4. Register participants only with appropriate consent.
 5. Process event photos, review uncertain matches, and export/deliver results.
 
+CampPhotoAI.exe is intentionally placed at the top level of the extracted
+package. The optional command-line application is in the CLI folder.
+
 The current Windows validation build includes the face model, so it can work
 without downloading the model on first use.
+
+The application creates its own data, logs, and output folders on first run.
+Those folders travel with the application if you later move the extracted
+Camp Photo AI folder.
 
 Support:
 Phone: 09039930006
