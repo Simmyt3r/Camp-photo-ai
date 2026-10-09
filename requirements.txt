@@ -4,6 +4,7 @@
 
 # Core
 SQLAlchemy==2.0.32
+cryptography==43.0.1
 
 # Computer vision / ML
 opencv-python==4.10.0.84

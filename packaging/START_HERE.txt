@@ -10,8 +10,10 @@ WINDOWS QUICK START
    Do not run the application from inside the ZIP file.
 2. In the extracted folder, double-click CampPhotoAI.exe.
 3. Read and accept the first-run User Agreement.
-4. Register participants only with appropriate consent.
-5. Process event photos, review uncertain matches, and export/deliver results.
+4. Complete the CampPhoto AI Pilot Activation screen. The pilot activation fee is N10,000.
+5. After payment is manually verified by Silabs, import the signed .cpa-license file supplied to you.
+6. Register participants only with appropriate consent.
+7. Process event photos, review uncertain matches, and export/deliver results.
 
 CampPhotoAI.exe is intentionally placed at the top level of the extracted
 package. The optional command-line application is in the CLI folder.

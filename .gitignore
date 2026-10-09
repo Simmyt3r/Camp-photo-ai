@@ -23,6 +23,7 @@ data/*.db
 data/*.db-*
 data/input/
 data/captures/
+data/license.cpa-license
 logs/*
 !logs/.gitkeep
 output/*
@@ -39,6 +40,11 @@ build/
 dist/
 release/
 *.spec.bak
+
+# Licence issuing secrets and generated customer licences
+license_keys/
+*.cpa-license
+*.activation-request.txt
 
 # Local documents / scratch files
 *.docx

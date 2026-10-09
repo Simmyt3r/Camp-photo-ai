@@ -20,6 +20,8 @@ from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QApplication, QDialog
 
 from app.bootstrap import AppContext
+from app.services.licensing import validate_installed_license
+from app.ui.activation_dialog import ActivationDialog
 from app.ui.agreement_dialog import UserAgreementDialog
 from app.ui.branding import (
     AGREEMENT_VERSION, COMPANY_NAME, PRODUCT_NAME, app_logo_path,
@@ -67,6 +69,15 @@ def main() -> None:
             raise SystemExit(0)
         context.settings.user_agreement_version = AGREEMENT_VERSION
         context.settings.save()
+
+    licence = validate_installed_license()
+    if not licence.valid:
+        activation = ActivationDialog()
+        if activation.exec() != QDialog.Accepted:
+            raise SystemExit(0)
+        licence = validate_installed_license()
+        if not licence.valid:
+            raise SystemExit(0)
 
     window = MainWindow(context)
     window.show()
