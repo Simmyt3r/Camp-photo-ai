@@ -14,6 +14,7 @@ from io import BytesIO
 from typing import Any
 from urllib.parse import urlparse
 
+import bcrypt
 import requests
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
@@ -212,6 +213,22 @@ def verify_paystack_transaction(app: Flask, reference: str) -> dict[str, Any]:
     if not body.get("status") or not isinstance(body.get("data"), dict):
         raise RuntimeError(body.get("message") or "Paystack could not verify the transaction.")
     return body["data"]
+
+
+def _check_admin_password(stored_hash: str, password: str) -> bool:
+    stored_hash = (stored_hash or "").strip()
+    if not stored_hash or not password:
+        return False
+
+    try:
+        if stored_hash.startswith(("$2a$", "$2b$", "$2y$")):
+            return bcrypt.checkpw(
+                password.encode("utf-8"),
+                stored_hash.encode("utf-8"),
+            )
+        return check_password_hash(stored_hash, password)
+    except (ValueError, TypeError, bcrypt.error):
+        return False
 
 
 def _configuration(app: Flask) -> dict[str, bool]:
@@ -769,7 +786,11 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
                     limit=10,
                     window_minutes=15,
                 )
-            if hmac.compare_digest(email, app.config["ADMIN_EMAIL"]) and check_password_hash(app.config["ADMIN_PASSWORD_HASH"], password):
+            password_ok = _check_admin_password(
+                app.config["ADMIN_PASSWORD_HASH"],
+                password,
+            )
+            if hmac.compare_digest(email, app.config["ADMIN_EMAIL"]) and password_ok:
                 session.clear()
                 session.permanent = True
                 session["admin_authenticated"] = True
