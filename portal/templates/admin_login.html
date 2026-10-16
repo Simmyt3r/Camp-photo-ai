@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block title %}Admin login{% endblock %}
+{% block content %}
+<section class="card narrow">
+  <div class="eyebrow">SILABS ADMIN</div><h1>Licence administration</h1>
+  {% if not config.admin %}<div class="notice warning">ADMIN_EMAIL and ADMIN_PASSWORD_HASH are not configured.</div>{% endif %}
+  <form method="post">
+    <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+    <label>Email<input type="email" name="email" required></label>
+    <label>Password<input type="password" name="password" required></label>
+    <button class="primary" type="submit">Sign in</button>
+  </form>
+</section>
+{% endblock %}
