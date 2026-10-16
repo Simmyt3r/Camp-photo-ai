@@ -27,7 +27,7 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
 from sqlalchemy.pool import NullPool
 from werkzeug.security import check_password_hash
 
-PORTAL_VERSION = "1.0.0"
+PORTAL_VERSION = "1.0.1"
 ACTIVATION_FEE_NGN = 10_000
 ACTIVATION_FEE_KOBO = ACTIVATION_FEE_NGN * 100
 LICENSE_VERSION = 1
