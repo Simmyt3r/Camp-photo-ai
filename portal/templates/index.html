@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}Activate CampPhoto AI{% endblock %}
+{% block content %}
+<section class="hero">
+  <div><div class="eyebrow">PILOT ACTIVATION</div><h1>Activate CampPhoto AI</h1><p>One device. One camp. One batch cycle. Offline after activation.</p></div>
+  <div class="price">₦{{ "{:,}".format(activation_fee_ngn) }}</div>
+</section>
+{% if not (config.database and config.paystack and config.signing_key and config.app_url) %}
+<div class="notice warning">This portal is deployed but payment setup is not complete yet. An administrator must finish the environment configuration before live activations can start.</div>
+{% endif %}
+<div class="grid two">
+  <section class="card">
+    <h2>Camp details</h2>
+    <form method="post" action="{{ url_for('activate') }}">
+      <label>Device ID<input name="device_id" value="{{ prefill_device }}" placeholder="CPA-XXXX-XXXX-XXXX-XXXX" required></label>
+      <label>Camp name<input name="camp_name" placeholder="NYSC Benue Orientation Camp" required></label>
+      <div class="grid two compact">
+        <label>State<input name="state" placeholder="Benue" required></label>
+        <label>Batch / Stream<input name="batch_stream" placeholder="2026 Batch C Stream I" required></label>
+      </div>
+      <label>Contact person<input name="contact_name" required></label>
+      <div class="grid two compact">
+        <label>Email<input type="email" name="email" required></label>
+        <label>Phone<input name="phone"></label>
+      </div>
+      <button class="primary" type="submit" {% if not (config.database and config.paystack and config.signing_key and config.app_url) %}disabled{% endif %}>Pay ₦{{ "{:,}".format(activation_fee_ngn) }} securely</button>
+    </form>
+  </section>
+  <aside class="card soft">
+    <h2>How it works</h2>
+    <ol class="steps">
+      <li>Enter the Device ID shown by CampPhoto AI.</li>
+      <li>Complete the ₦{{ "{:,}".format(activation_fee_ngn) }} Paystack checkout.</li>
+      <li>The server verifies the payment directly with Paystack.</li>
+      <li>A signed licence is issued for that device.</li>
+      <li>Download/import the licence. CampPhoto AI then works offline.</li>
+    </ol>
+    <p class="muted small">The private signing key never enters the desktop application or customer computer.</p>
+  </aside>
+</div>
+{% endblock %}
