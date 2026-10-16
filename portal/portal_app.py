@@ -14,6 +14,7 @@ from io import BytesIO
 from typing import Any
 from urllib.parse import urlparse
 
+import bcrypt
 import requests
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
@@ -26,7 +27,7 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
 from sqlalchemy.pool import NullPool
 from werkzeug.security import check_password_hash
 
-PORTAL_VERSION = "1.0.0"
+PORTAL_VERSION = "1.0.1"
 ACTIVATION_FEE_NGN = 10_000
 ACTIVATION_FEE_KOBO = ACTIVATION_FEE_NGN * 100
 LICENSE_VERSION = 1
@@ -212,6 +213,22 @@ def verify_paystack_transaction(app: Flask, reference: str) -> dict[str, Any]:
     if not body.get("status") or not isinstance(body.get("data"), dict):
         raise RuntimeError(body.get("message") or "Paystack could not verify the transaction.")
     return body["data"]
+
+
+def _check_admin_password(stored_hash: str, password: str) -> bool:
+    stored_hash = (stored_hash or "").strip()
+    if not stored_hash or not password:
+        return False
+
+    try:
+        if stored_hash.startswith(("$2a$", "$2b$", "$2y$")):
+            return bcrypt.checkpw(
+                password.encode("utf-8"),
+                stored_hash.encode("utf-8"),
+            )
+        return check_password_hash(stored_hash, password)
+    except (ValueError, TypeError):
+        return False
 
 
 def _configuration(app: Flask) -> dict[str, bool]:
@@ -769,7 +786,12 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
                     limit=10,
                     window_minutes=15,
                 )
-            if hmac.compare_digest(email, app.config["ADMIN_EMAIL"]) and check_password_hash(app.config["ADMIN_PASSWORD_HASH"], password):
+            email_ok = hmac.compare_digest(email, app.config["ADMIN_EMAIL"])
+            password_ok = email_ok and _check_admin_password(
+                app.config["ADMIN_PASSWORD_HASH"],
+                password,
+            )
+            if email_ok and password_ok:
                 session.clear()
                 session.permanent = True
                 session["admin_authenticated"] = True
