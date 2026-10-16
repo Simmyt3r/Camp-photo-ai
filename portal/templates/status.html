@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block title %}Activation status{% endblock %}
+{% block content %}
+<section class="page-heading">
+  <div><div class="eyebrow">ACTIVATION STATUS</div><h1>{{ item.camp_name }}</h1><p>{{ item.batch_stream }} • {{ item.device_id }}</p></div>
+  <span class="badge {{ item.status }}">{{ item.status.replace("_", " ") }}</span>
+</section>
+<div class="grid two">
+  <section class="card">
+    <h2>Payment</h2>
+    <dl>
+      <dt>Amount</dt><dd>₦{{ "{:,}".format(item.amount_ngn) }}</dd>
+      <dt>Reference</dt><dd>{{ item.payment_reference or "Not initialized" }}</dd>
+      <dt>Status</dt><dd>{{ item.paystack_status or item.status }}</dd>
+      <dt>Email</dt><dd>{{ item.email }}</dd>
+    </dl>
+    {% if item.status not in ["licensed", "revoked"] %}
+    <form method="post" action="{{ url_for('activation_verify', token=item.public_token) }}"><button class="secondary" type="submit">Check payment again</button></form>
+    {% endif %}
+  </section>
+  <section class="card">
+    <h2>Licence</h2>
+    {% if item.status == "licensed" %}
+      <div class="notice success">Payment verified. Your licence is ready.</div>
+      <dl><dt>Licence ID</dt><dd>{{ item.license_id }}</dd><dt>Valid until</dt><dd>{{ item.expires_on }}</dd></dl>
+      <a class="button primary" href="{{ url_for('download_license', token=item.public_token) }}">Download .cpa-license</a>
+    {% elif item.status == "revoked" %}
+      <div class="notice error">This activation has been revoked. Contact Silabs support.</div>
+    {% else %}
+      <p>Once Paystack confirms the payment, the licence is generated automatically.</p>
+    {% endif %}
+  </section>
+</div>
+{% endblock %}
