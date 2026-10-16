@@ -66,3 +66,7 @@ flask --app app run --debug
 - The public activation token is high entropy and acts as a status/download capability.
 - Admin state-changing forms use CSRF tokens.
 - Server-side revocation cannot invalidate a licence already imported by an intentionally offline desktop. It blocks future downloads/reissues; the signed licence remains valid until expiry.
+
+## Admin password hash formats
+
+The portal accepts Werkzeug password hashes and standard bcrypt hashes. Malformed or unsupported hashes fail closed as invalid credentials instead of producing a server error.
