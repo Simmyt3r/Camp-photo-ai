@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block title %}Admin dashboard{% endblock %}
+{% block content %}
+<section class="page-heading">
+  <div><div class="eyebrow">SILABS ADMIN</div><h1>CampPhoto AI activations</h1><p>Payments, signed licences, and pilot deployment history.</p></div>
+  <form method="post" action="{{ url_for('admin_logout') }}">
+    <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+    <button class="secondary" type="submit">Sign out</button>
+  </form>
+</section>
+<div class="stats">
+  <div class="stat"><strong>{{ counts.all }}</strong><span>Recent requests</span></div>
+  <div class="stat"><strong>{{ counts.licensed }}</strong><span>Licensed</span></div>
+  <div class="stat"><strong>{{ counts.pending }}</strong><span>Pending</span></div>
+  <div class="stat"><strong>{{ counts.revoked }}</strong><span>Revoked</span></div>
+</div>
+<section class="card table-card">
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Camp</th><th>Device</th><th>Payment</th><th>Status</th><th>Created</th><th></th></tr></thead>
+      <tbody>
+      {% for item in items %}
+        <tr>
+          <td><strong>{{ item.camp_name }}</strong><br><span class="muted small">{{ item.state }} • {{ item.batch_stream }}</span></td>
+          <td><code>{{ item.device_id }}</code></td>
+          <td>{{ item.payment_reference or "—" }}</td>
+          <td><span class="badge {{ item.status }}">{{ item.status.replace("_", " ") }}</span></td>
+          <td>{{ item.created_at.strftime("%Y-%m-%d %H:%M") if item.created_at else "—" }}</td>
+          <td><a href="{{ url_for('admin_request_detail', item_id=item.id) }}">Open</a></td>
+        </tr>
+      {% else %}
+        <tr><td colspan="6">No activation requests yet.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}
