@@ -237,7 +237,7 @@ def test_activation_creation_is_rate_limited(app):
 
 def test_health_reports_frozen_version(app):
     data = app.test_client().get("/health").get_json()
-    assert data["version"] == "1.0.0"
+    assert data["version"] == "1.0.1"
 
 
 def test_pinned_fingerprint_matches_desktop_public_key():
