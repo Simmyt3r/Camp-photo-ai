@@ -5,12 +5,14 @@ import hashlib
 import hmac
 import json
 import os
+import re
 import secrets
 import uuid
 from datetime import date, datetime, timedelta, timezone
 from functools import wraps
 from io import BytesIO
 from typing import Any
+from urllib.parse import urlparse
 
 import requests
 from cryptography.hazmat.primitives import serialization
@@ -19,17 +21,21 @@ from flask import (
     Flask, abort, flash, jsonify, redirect, render_template, request,
     send_file, session, url_for,
 )
-from sqlalchemy import DateTime, Integer, String, Text, create_engine, select
+from sqlalchemy import DateTime, Integer, String, Text, create_engine, func, select
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
 from sqlalchemy.pool import NullPool
 from werkzeug.security import check_password_hash
 
+PORTAL_VERSION = "1.0.0"
 ACTIVATION_FEE_NGN = 10_000
 ACTIVATION_FEE_KOBO = ACTIVATION_FEE_NGN * 100
 LICENSE_VERSION = 1
 LICENSE_KIND = "camp_pilot"
 ISSUER = "Simeon's Laboratories And Co Technologies Ltd"
 PAYSTACK_API = "https://api.paystack.co"
+EXPECTED_LICENSE_PUBLIC_KEY_SHA256 = "b5a16e159d90fe0a99dd4c05f5bac03d8d13b1695f870d049a172f30a815c1be"
+DEVICE_ID_RE = re.compile(r"^CPA-(?:[A-F0-9]{4}-){3}[A-F0-9]{4}$")
+MAX_REQUEST_BODY_BYTES = 64 * 1024
 
 
 class Base(DeclarativeBase):
@@ -78,6 +84,15 @@ class AuditEvent(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
+class SecurityEvent(Base):
+    __tablename__ = "security_events"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    scope: Mapped[str] = mapped_column(String(64), index=True)
+    key_hash: Mapped[str] = mapped_column(String(64), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
+
+
 def _normalise_database_url(value: str) -> str:
     value = value.strip()
     if value.startswith("postgres://"):
@@ -104,12 +119,42 @@ def _private_key_bytes(app: Flask) -> bytes:
     raise RuntimeError("CampPhoto AI private signing key is not configured.")
 
 
-def _sign_payload(app: Flask, payload: dict[str, Any]) -> dict[str, Any]:
+def _load_signing_key(app: Flask) -> Ed25519PrivateKey:
     key = serialization.load_pem_private_key(_private_key_bytes(app), password=None)
     if not isinstance(key, Ed25519PrivateKey):
         raise RuntimeError("Configured CampPhoto AI signing key is not Ed25519.")
+
+    public_der = key.public_key().public_bytes(
+        serialization.Encoding.DER,
+        serialization.PublicFormat.SubjectPublicKeyInfo,
+    )
+    fingerprint = hashlib.sha256(public_der).hexdigest()
+    expected = str(
+        app.config.get(
+            "EXPECTED_LICENSE_PUBLIC_KEY_SHA256",
+            EXPECTED_LICENSE_PUBLIC_KEY_SHA256,
+        )
+    ).strip().lower()
+    if not expected or not hmac.compare_digest(fingerprint, expected):
+        raise RuntimeError(
+            "Configured signing key does not match the public verification key "
+            "bundled with the CampPhoto AI desktop application."
+        )
+    return key
+
+
+def _sign_payload(app: Flask, payload: dict[str, Any]) -> dict[str, Any]:
+    key = _load_signing_key(app)
     signature = key.sign(_canonical_payload(payload))
     return {"payload": payload, "signature": base64.b64encode(signature).decode("ascii")}
+
+
+def _signing_key_ready(app: Flask) -> bool:
+    try:
+        _load_signing_key(app)
+        return True
+    except Exception:
+        return False
 
 
 def _parse_metadata(value: Any) -> dict[str, Any]:
@@ -173,7 +218,7 @@ def _configuration(app: Flask) -> dict[str, bool]:
     return {
         "database": bool(app.config.get("DATABASE_URL")),
         "paystack": bool(app.config.get("PAYSTACK_SECRET_KEY")),
-        "signing_key": bool(app.config.get("CAMPPHOTO_LICENSE_PRIVATE_KEY_B64") or app.config.get("CAMPPHOTO_LICENSE_PRIVATE_KEY_PEM")),
+        "signing_key": _signing_key_ready(app),
         "app_url": bool(app.config.get("APP_BASE_URL")),
         "flask_secret": bool(os.getenv("FLASK_SECRET_KEY") or app.config.get("TESTING")),
         "admin": bool(app.config.get("ADMIN_EMAIL") and app.config.get("ADMIN_PASSWORD_HASH")),
@@ -194,9 +239,17 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
         PILOT_LICENSE_DAYS=int(os.getenv("PILOT_LICENSE_DAYS", "45")),
         SUPPORT_PHONE=os.getenv("SUPPORT_PHONE", "09039930006"),
         SUPPORT_EMAIL=os.getenv("SUPPORT_EMAIL", "silabtechnologies@gmail.com"),
+        EXPECTED_LICENSE_PUBLIC_KEY_SHA256=EXPECTED_LICENSE_PUBLIC_KEY_SHA256,
+        MAX_CONTENT_LENGTH=MAX_REQUEST_BODY_BYTES,
+        SESSION_COOKIE_HTTPONLY=True,
+        SESSION_COOKIE_SAMESITE="Lax",
+        PERMANENT_SESSION_LIFETIME=timedelta(minutes=30),
+        SESSION_REFRESH_EACH_REQUEST=False,
     )
     if test_config:
         app.config.update(test_config)
+    if not app.config.get("TESTING"):
+        app.config["SESSION_COOKIE_SECURE"] = True
 
     database_url = app.config.get("DATABASE_URL", "")
     engine = None
@@ -220,6 +273,30 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
             event=event,
             detail=detail[:4000],
         ))
+
+    def enforce_rate_limit(
+        database,
+        *,
+        scope: str,
+        identity: str,
+        limit: int,
+        window_minutes: int,
+    ) -> None:
+        secret = str(app.config["SECRET_KEY"]).encode("utf-8")
+        material = f"{scope}|{identity}".encode("utf-8")
+        key_hash = hmac.new(secret, material, hashlib.sha256).hexdigest()
+        cutoff = utcnow() - timedelta(minutes=window_minutes)
+        count = database.scalar(
+            select(func.count(SecurityEvent.id)).where(
+                SecurityEvent.scope == scope,
+                SecurityEvent.key_hash == key_hash,
+                SecurityEvent.created_at >= cutoff,
+            )
+        ) or 0
+        if count >= limit:
+            abort(429, description="Too many attempts. Try again later.")
+        database.add(SecurityEvent(scope=scope, key_hash=key_hash))
+        database.commit()
 
     def require_operational() -> None:
         config = _configuration(app)
@@ -266,6 +343,11 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
         return document
 
     def accept_verified_payment(database, record: ActivationRequest, data: dict[str, Any]) -> dict[str, Any]:
+        if record.status == "revoked" or record.revoked_at is not None:
+            raise RuntimeError("This activation has been revoked.")
+        if record.status == "licensed" and record.license_json:
+            return json.loads(record.license_json)
+
         if data.get("status") != "success":
             raise RuntimeError(f"Payment is not successful ({data.get('status', 'unknown')}).")
         if int(data.get("amount") or 0) != ACTIVATION_FEE_KOBO:
@@ -277,15 +359,15 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
 
         metadata = _parse_metadata(data.get("metadata"))
         token = str(metadata.get("activation_token", ""))
-        if token and token != record.public_token:
+        if token != record.public_token:
             raise RuntimeError("Paystack metadata does not match this activation request.")
         device = str(metadata.get("device_id", "")).strip().upper()
-        if device and device != record.device_id.strip().upper():
+        if device != record.device_id.strip().upper():
             raise RuntimeError("Paystack metadata device does not match this activation request.")
 
         customer = data.get("customer") or {}
         paystack_email = str(customer.get("email", "")).strip().lower()
-        if paystack_email and paystack_email != record.email.strip().lower():
+        if paystack_email != record.email.strip().lower():
             raise RuntimeError("Paystack customer email does not match this activation request.")
 
         if record.status not in {"licensed", "revoked"}:
@@ -296,8 +378,18 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
         database.commit()
         return issue_license(database, record)
 
-    def find_by_reference(database, reference: str) -> ActivationRequest | None:
-        return database.scalar(select(ActivationRequest).where(ActivationRequest.payment_reference == reference))
+    def find_by_reference(
+        database,
+        reference: str,
+        *,
+        for_update: bool = False,
+    ) -> ActivationRequest | None:
+        statement = select(ActivationRequest).where(
+            ActivationRequest.payment_reference == reference
+        )
+        if for_update:
+            statement = statement.with_for_update().execution_options(populate_existing=True)
+        return database.scalar(statement)
 
     def create_request_from_values(values: dict[str, Any]) -> ActivationRequest:
         required = {
@@ -308,19 +400,35 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
         missing = [label for key, label in required.items() if not cleaned[key]]
         if missing:
             raise ValueError("Missing: " + ", ".join(missing))
+        if len(cleaned["camp_name"]) > 240:
+            raise ValueError("Camp name is too long.")
+        if len(cleaned["state"]) > 120:
+            raise ValueError("State is too long.")
+        if len(cleaned["batch_stream"]) > 160:
+            raise ValueError("Batch / Stream is too long.")
+        if len(cleaned["contact_name"]) > 200:
+            raise ValueError("Contact person is too long.")
+        if len(cleaned["email"]) > 240:
+            raise ValueError("Email is too long.")
+        phone = str(values.get("phone", "")).strip()
+        if len(phone) > 80:
+            raise ValueError("Phone number is too long.")
         if "@" not in cleaned["email"] or "." not in cleaned["email"].split("@")[-1]:
             raise ValueError("Enter a valid email address.")
-        if not cleaned["device_id"].upper().startswith("CPA-"):
-            raise ValueError("Device ID does not look like a CampPhoto AI device ID.")
+        device_id = cleaned["device_id"].upper()
+        if not DEVICE_ID_RE.fullmatch(device_id):
+            raise ValueError(
+                "Device ID must match CPA-XXXX-XXXX-XXXX-XXXX using hexadecimal characters."
+            )
         return ActivationRequest(
             public_token=secrets.token_urlsafe(32),
-            device_id=cleaned["device_id"].upper(),
+            device_id=device_id,
             camp_name=cleaned["camp_name"],
             state=cleaned["state"],
             batch_stream=cleaned["batch_stream"],
             contact_name=cleaned["contact_name"],
             email=cleaned["email"].lower(),
-            phone=str(values.get("phone", "")).strip(),
+            phone=phone,
             amount_ngn=ACTIVATION_FEE_NGN,
             payment_reference="CPA-" + date.today().strftime("%Y%m%d") + "-" + secrets.token_hex(6).upper(),
             status="created",
@@ -328,12 +436,20 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
 
     def start_payment(database, record: ActivationRequest) -> str:
         data = initialize_paystack_transaction(app, record)
+        authorization_url = str(data.get("authorization_url", "")).strip()
+        parsed = urlparse(authorization_url)
+        hostname = (parsed.hostname or "").lower()
+        if parsed.scheme != "https" or not (
+            hostname == "paystack.com" or hostname.endswith(".paystack.com")
+        ):
+            raise RuntimeError("Paystack returned an invalid authorization URL.")
+
         record.paystack_access_code = str(data.get("access_code", ""))
         record.payment_reference = str(data.get("reference") or record.payment_reference)
         record.status = "payment_initialized"
         audit(database, "payment_initialized", record, record.payment_reference or "")
         database.commit()
-        return str(data["authorization_url"])
+        return authorization_url
 
     def csrf_token() -> str:
         token = session.get("_csrf")
@@ -345,11 +461,39 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
     app.jinja_env.globals["csrf_token"] = csrf_token
     app.jinja_env.globals["activation_fee_ngn"] = ACTIVATION_FEE_NGN
 
+    @app.after_request
+    def add_security_headers(response):
+        response.headers.setdefault("X-Content-Type-Options", "nosniff")
+        response.headers.setdefault("X-Frame-Options", "DENY")
+        response.headers.setdefault("Referrer-Policy", "no-referrer")
+        response.headers.setdefault(
+            "Permissions-Policy",
+            "camera=(), microphone=(), geolocation=()",
+        )
+        response.headers.setdefault(
+            "Content-Security-Policy",
+            "default-src 'self'; base-uri 'none'; frame-ancestors 'none'; "
+            "form-action 'self'; object-src 'none'; img-src 'self' data:; "
+            "style-src 'self'; script-src 'none'",
+        )
+        if request.is_secure or str(app.config.get("APP_BASE_URL", "")).startswith("https://"):
+            response.headers.setdefault(
+                "Strict-Transport-Security",
+                "max-age=31536000; includeSubDomains",
+            )
+        if not request.path.startswith("/static/"):
+            response.headers.setdefault("Cache-Control", "no-store")
+        return response
+
     def check_csrf() -> None:
         supplied = request.form.get("_csrf", "")
         expected = session.get("_csrf", "")
         if not expected or not hmac.compare_digest(supplied, expected):
             abort(400, description="Invalid form token. Reload the page and try again.")
+
+    def require_desktop_api_request() -> None:
+        if request.headers.get("X-CampPhoto-Client", "") != "desktop-v1":
+            abort(400, description="Missing CampPhoto AI client header.")
 
     def admin_required(view):
         @wraps(view)
@@ -361,7 +505,7 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
 
     @app.get("/health")
     def health():
-        return jsonify({"status": "ok", "app": "CampPhoto AI Licence Portal", "configuration": _configuration(app)})
+        return jsonify({"status": "ok", "app": "CampPhoto AI Licence Portal", "version": PORTAL_VERSION, "configuration": _configuration(app)})
 
     @app.get("/")
     def home():
@@ -369,6 +513,7 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
 
     @app.post("/activate")
     def activate():
+        check_csrf()
         require_operational()
         try:
             record = create_request_from_values(request.form)
@@ -376,6 +521,13 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
             flash(str(exc), "error")
             return redirect(url_for("home"))
         with db() as database:
+            enforce_rate_limit(
+                database,
+                scope="activation-create",
+                identity=f"{record.device_id}|{record.email}",
+                limit=5,
+                window_minutes=15,
+            )
             database.add(record)
             database.commit()
             database.refresh(record)
@@ -404,6 +556,9 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
                 abort(404)
             try:
                 data = verify_paystack_transaction(app, reference)
+                record = find_by_reference(database, reference, for_update=True)
+                if record is None:
+                    abort(404)
                 accept_verified_payment(database, record, data)
                 flash("Payment verified. Your CampPhoto AI licence is ready.", "success")
             except Exception as exc:
@@ -439,6 +594,9 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
                 if record is None:
                     return ("", 200)
                 verified = verify_paystack_transaction(app, reference)
+                record = find_by_reference(database, reference, for_update=True)
+                if record is None:
+                    return ("", 200)
                 accept_verified_payment(database, record, verified)
         except Exception:
             return ("", 500)
@@ -454,14 +612,30 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
 
     @app.post("/status/<token>/verify")
     def activation_verify(token: str):
+        check_csrf()
         require_operational()
         with db() as database:
             record = database.scalar(select(ActivationRequest).where(ActivationRequest.public_token == token))
             if record is None:
                 abort(404)
+            enforce_rate_limit(
+                database,
+                scope="payment-recheck",
+                identity=record.public_token,
+                limit=12,
+                window_minutes=15,
+            )
             if record.status != "licensed":
                 try:
                     verified = verify_paystack_transaction(app, record.payment_reference or "")
+                    record = database.scalar(
+                        select(ActivationRequest)
+                        .where(ActivationRequest.public_token == token)
+                        .with_for_update()
+                        .execution_options(populate_existing=True)
+                    )
+                    if record is None:
+                        abort(404)
                     accept_verified_payment(database, record, verified)
                     flash("Payment verified and licence issued.", "success")
                 except Exception as exc:
@@ -487,12 +661,22 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
 
     @app.post("/api/requests")
     def api_create_request():
+        require_desktop_api_request()
+        if not request.is_json:
+            return jsonify({"ok": False, "error": "JSON request required."}), 415
         require_operational()
         try:
             record = create_request_from_values(request.get_json(silent=True) or {})
         except ValueError as exc:
             return jsonify({"ok": False, "error": str(exc)}), 400
         with db() as database:
+            enforce_rate_limit(
+                database,
+                scope="activation-create",
+                identity=f"{record.device_id}|{record.email}",
+                limit=5,
+                window_minutes=15,
+            )
             database.add(record)
             database.commit()
             database.refresh(record)
@@ -515,6 +699,7 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
 
     @app.get("/api/requests/<token>")
     def api_request_status(token: str):
+        require_desktop_api_request()
         with db() as database:
             record = database.scalar(select(ActivationRequest).where(ActivationRequest.public_token == token))
             if record is None:
@@ -530,15 +715,31 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
 
     @app.post("/api/requests/<token>/verify")
     def api_verify_request(token: str):
+        require_desktop_api_request()
         require_operational()
         with db() as database:
             record = database.scalar(select(ActivationRequest).where(ActivationRequest.public_token == token))
             if record is None:
                 return jsonify({"ok": False, "error": "Activation request not found."}), 404
+            enforce_rate_limit(
+                database,
+                scope="payment-recheck",
+                identity=record.public_token,
+                limit=12,
+                window_minutes=15,
+            )
             if record.status == "licensed" and record.license_json:
                 return jsonify({"ok": True, "status": "licensed"})
             try:
                 verified = verify_paystack_transaction(app, record.payment_reference or "")
+                record = database.scalar(
+                    select(ActivationRequest)
+                    .where(ActivationRequest.public_token == token)
+                    .with_for_update()
+                    .execution_options(populate_existing=True)
+                )
+                if record is None:
+                    return jsonify({"ok": False, "error": "Activation request not found."}), 404
                 accept_verified_payment(database, record, verified)
                 return jsonify({"ok": True, "status": "licensed"})
             except Exception as exc:
@@ -551,13 +752,22 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
         config = _configuration(app)
         if request.method == "POST":
             check_csrf()
-            if not config["admin"] or not config["flask_secret"]:
+            if not config["admin"] or not config["flask_secret"] or not config["database"]:
                 flash("Admin login is not configured.", "error")
                 return redirect(url_for("admin_login"))
             email = request.form.get("email", "").strip().lower()
             password = request.form.get("password", "")
+            with db() as database:
+                enforce_rate_limit(
+                    database,
+                    scope="admin-login",
+                    identity=email,
+                    limit=10,
+                    window_minutes=15,
+                )
             if hmac.compare_digest(email, app.config["ADMIN_EMAIL"]) and check_password_hash(app.config["ADMIN_PASSWORD_HASH"], password):
                 session.clear()
+                session.permanent = True
                 session["admin_authenticated"] = True
                 session["admin_email"] = email
                 csrf_token()
@@ -612,6 +822,10 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
             if not reference:
                 flash("Enter the payment reference you personally verified.", "error")
                 return redirect(url_for("admin_request_detail", item_id=item_id))
+            existing = find_by_reference(database, reference, for_update=True)
+            if existing is not None and existing.id != record.id:
+                flash("That payment reference is already assigned to another activation.", "error")
+                return redirect(url_for("admin_request_detail", item_id=item_id))
             record.payment_reference = reference
             record.paystack_status = "manual_admin_approval"
             record.paid_at = utcnow()
@@ -651,6 +865,13 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
             database.commit()
             flash("Portal entitlement revoked. An already imported offline licence cannot be remotely disabled.", "warning")
         return redirect(url_for("admin_request_detail", item_id=item_id))
+
+    @app.errorhandler(429)
+    def too_many_requests(error):
+        message = getattr(error, "description", "Too many attempts. Try again later.")
+        if request.path.startswith("/api/"):
+            return jsonify({"ok": False, "error": message}), 429
+        return message, 429
 
     @app.errorhandler(503)
     def setup_required(error):

@@ -15,7 +15,7 @@
       <dt>Email</dt><dd>{{ item.email }}</dd>
     </dl>
     {% if item.status not in ["licensed", "revoked"] %}
-    <form method="post" action="{{ url_for('activation_verify', token=item.public_token) }}"><button class="secondary" type="submit">Check payment again</button></form>
+    <form method="post" action="{{ url_for('activation_verify', token=item.public_token) }}"><input type="hidden" name="_csrf" value="{{ csrf_token() }}"><button class="secondary" type="submit">Check payment again</button></form>
     {% endif %}
   </section>
   <section class="card">

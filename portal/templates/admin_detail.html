@@ -45,7 +45,7 @@
       <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
       <button class="secondary" type="submit">Reissue licence</button>
     </form>
-    <form method="post" action="{{ url_for('admin_revoke', item_id=item.id) }}" onsubmit="return confirm('Revoke this server-side entitlement? Existing offline licences remain usable until expiry.')">
+    <form method="post" action="{{ url_for('admin_revoke', item_id=item.id) }}">
       <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
       <button class="danger" type="submit">Revoke entitlement</button>
     </form>

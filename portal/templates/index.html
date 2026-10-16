@@ -12,6 +12,7 @@
   <section class="card">
     <h2>Camp details</h2>
     <form method="post" action="{{ url_for('activate') }}">
+      <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
       <label>Device ID<input name="device_id" value="{{ prefill_device }}" placeholder="CPA-XXXX-XXXX-XXXX-XXXX" required></label>
       <label>Camp name<input name="camp_name" placeholder="NYSC Benue Orientation Camp" required></label>
       <div class="grid two compact">
