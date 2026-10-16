@@ -21,7 +21,7 @@ from flask import (
     Flask, abort, flash, jsonify, redirect, render_template, request,
     send_file, session, url_for,
 )
-from sqlalchemy import DateTime, Integer, String, Text, create_engine, select
+from sqlalchemy import DateTime, Integer, String, Text, create_engine, func, select
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
 from sqlalchemy.pool import NullPool
 from werkzeug.security import check_password_hash
@@ -81,6 +81,15 @@ class AuditEvent(Base):
     event: Mapped[str] = mapped_column(String(100), index=True)
     detail: Mapped[str] = mapped_column(Text, default="")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class SecurityEvent(Base):
+    __tablename__ = "security_events"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    scope: Mapped[str] = mapped_column(String(64), index=True)
+    key_hash: Mapped[str] = mapped_column(String(64), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
 
 
 def _normalise_database_url(value: str) -> str:
@@ -263,6 +272,36 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
             event=event,
             detail=detail[:4000],
         ))
+
+    def client_ip() -> str:
+        forwarded = request.headers.get("x-forwarded-for", "")
+        if forwarded:
+            return forwarded.split(",", 1)[0].strip()[:128]
+        return (request.remote_addr or "unknown")[:128]
+
+    def enforce_rate_limit(
+        database,
+        *,
+        scope: str,
+        identity: str,
+        limit: int,
+        window_minutes: int,
+    ) -> None:
+        secret = str(app.config["SECRET_KEY"]).encode("utf-8")
+        material = f"{scope}|{client_ip()}|{identity}".encode("utf-8")
+        key_hash = hmac.new(secret, material, hashlib.sha256).hexdigest()
+        cutoff = utcnow() - timedelta(minutes=window_minutes)
+        count = database.scalar(
+            select(func.count(SecurityEvent.id)).where(
+                SecurityEvent.scope == scope,
+                SecurityEvent.key_hash == key_hash,
+                SecurityEvent.created_at >= cutoff,
+            )
+        ) or 0
+        if count >= limit:
+            abort(429, description="Too many attempts. Try again later.")
+        database.add(SecurityEvent(scope=scope, key_hash=key_hash))
+        database.commit()
 
     def require_operational() -> None:
         config = _configuration(app)
@@ -487,6 +526,13 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
             flash(str(exc), "error")
             return redirect(url_for("home"))
         with db() as database:
+            enforce_rate_limit(
+                database,
+                scope="activation-create",
+                identity=f"{record.device_id}|{record.email}",
+                limit=5,
+                window_minutes=15,
+            )
             database.add(record)
             database.commit()
             database.refresh(record)
@@ -577,6 +623,13 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
             record = database.scalar(select(ActivationRequest).where(ActivationRequest.public_token == token))
             if record is None:
                 abort(404)
+            enforce_rate_limit(
+                database,
+                scope="payment-recheck",
+                identity=record.public_token,
+                limit=12,
+                window_minutes=15,
+            )
             if record.status != "licensed":
                 try:
                     verified = verify_paystack_transaction(app, record.payment_reference or "")
@@ -622,6 +675,13 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
         except ValueError as exc:
             return jsonify({"ok": False, "error": str(exc)}), 400
         with db() as database:
+            enforce_rate_limit(
+                database,
+                scope="activation-create",
+                identity=f"{record.device_id}|{record.email}",
+                limit=5,
+                window_minutes=15,
+            )
             database.add(record)
             database.commit()
             database.refresh(record)
@@ -666,6 +726,13 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
             record = database.scalar(select(ActivationRequest).where(ActivationRequest.public_token == token))
             if record is None:
                 return jsonify({"ok": False, "error": "Activation request not found."}), 404
+            enforce_rate_limit(
+                database,
+                scope="payment-recheck",
+                identity=record.public_token,
+                limit=12,
+                window_minutes=15,
+            )
             if record.status == "licensed" and record.license_json:
                 return jsonify({"ok": True, "status": "licensed"})
             try:
@@ -690,11 +757,19 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
         config = _configuration(app)
         if request.method == "POST":
             check_csrf()
-            if not config["admin"] or not config["flask_secret"]:
+            if not config["admin"] or not config["flask_secret"] or not config["database"]:
                 flash("Admin login is not configured.", "error")
                 return redirect(url_for("admin_login"))
             email = request.form.get("email", "").strip().lower()
             password = request.form.get("password", "")
+            with db() as database:
+                enforce_rate_limit(
+                    database,
+                    scope="admin-login",
+                    identity=email,
+                    limit=10,
+                    window_minutes=15,
+                )
             if hmac.compare_digest(email, app.config["ADMIN_EMAIL"]) and check_password_hash(app.config["ADMIN_PASSWORD_HASH"], password):
                 session.clear()
                 session.permanent = True
@@ -795,6 +870,13 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
             database.commit()
             flash("Portal entitlement revoked. An already imported offline licence cannot be remotely disabled.", "warning")
         return redirect(url_for("admin_request_detail", item_id=item_id))
+
+    @app.errorhandler(429)
+    def too_many_requests(error):
+        message = getattr(error, "description", "Too many attempts. Try again later.")
+        if request.path.startswith("/api/"):
+            return jsonify({"ok": False, "error": message}), 429
+        return message, 429
 
     @app.errorhandler(503)
     def setup_required(error):
