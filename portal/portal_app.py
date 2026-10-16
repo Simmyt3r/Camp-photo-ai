@@ -274,12 +274,6 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
             detail=detail[:4000],
         ))
 
-    def client_ip() -> str:
-        forwarded = request.headers.get("x-forwarded-for", "")
-        if forwarded:
-            return forwarded.split(",", 1)[0].strip()[:128]
-        return (request.remote_addr or "unknown")[:128]
-
     def enforce_rate_limit(
         database,
         *,
@@ -289,7 +283,7 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
         window_minutes: int,
     ) -> None:
         secret = str(app.config["SECRET_KEY"]).encode("utf-8")
-        material = f"{scope}|{client_ip()}|{identity}".encode("utf-8")
+        material = f"{scope}|{identity}".encode("utf-8")
         key_hash = hmac.new(secret, material, hashlib.sha256).hexdigest()
         cutoff = utcnow() - timedelta(minutes=window_minutes)
         count = database.scalar(
