@@ -354,7 +354,7 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
             ActivationRequest.payment_reference == reference
         )
         if for_update:
-            statement = statement.with_for_update()
+            statement = statement.with_for_update().execution_options(populate_existing=True)
         return database.scalar(statement)
 
     def create_request_from_values(values: dict[str, Any]) -> ActivationRequest:
@@ -584,6 +584,7 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
                         select(ActivationRequest)
                         .where(ActivationRequest.public_token == token)
                         .with_for_update()
+                        .execution_options(populate_existing=True)
                     )
                     if record is None:
                         abort(404)
@@ -673,6 +674,7 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
                     select(ActivationRequest)
                     .where(ActivationRequest.public_token == token)
                     .with_for_update()
+                    .execution_options(populate_existing=True)
                 )
                 if record is None:
                     return jsonify({"ok": False, "error": "Activation request not found."}), 404
