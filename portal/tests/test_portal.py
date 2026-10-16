@@ -1,5 +1,6 @@
 import base64
 import hashlib
+from pathlib import Path
 
 import pytest
 from cryptography.hazmat.primitives import serialization
@@ -236,3 +237,13 @@ def test_activation_creation_is_rate_limited(app):
 def test_health_reports_frozen_version(app):
     data = app.test_client().get("/health").get_json()
     assert data["version"] == "1.0.0"
+
+
+def test_pinned_fingerprint_matches_desktop_public_key():
+    public_key_path = Path(__file__).resolve().parents[2] / "assets" / "license_public_key.pem"
+    public_key = serialization.load_pem_public_key(public_key_path.read_bytes())
+    public_der = public_key.public_bytes(
+        serialization.Encoding.DER,
+        serialization.PublicFormat.SubjectPublicKeyInfo,
+    )
+    assert hashlib.sha256(public_der).hexdigest() == portal_app.EXPECTED_LICENSE_PUBLIC_KEY_SHA256
