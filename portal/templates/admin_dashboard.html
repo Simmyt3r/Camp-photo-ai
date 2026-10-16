@@ -3,10 +3,13 @@
 {% block content %}
 <section class="page-heading">
   <div><div class="eyebrow">SILABS ADMIN</div><h1>CampPhoto AI activations</h1><p>Payments, signed licences, and pilot deployment history.</p></div>
-  <form method="post" action="{{ url_for('admin_logout') }}">
-    <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
-    <button class="secondary" type="submit">Sign out</button>
-  </form>
+  <div class="actions">
+    <a class="button secondary" href="{{ url_for('admin_guide') }}">Admin tutorial</a>
+    <form method="post" action="{{ url_for('admin_logout') }}">
+      <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+      <button class="secondary" type="submit">Sign out</button>
+    </form>
+  </div>
 </section>
 <div class="stats">
   <div class="stat"><strong>{{ counts.all }}</strong><span>Recent requests</span></div>
