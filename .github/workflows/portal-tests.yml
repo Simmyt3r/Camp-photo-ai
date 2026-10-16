@@ -30,4 +30,4 @@ jobs:
           pip install -r portal/requirements.txt pytest
       - name: Test licence portal
         working-directory: portal
-        run: pytest -q
+        run: PYTHONPATH=. python -m pytest -q
