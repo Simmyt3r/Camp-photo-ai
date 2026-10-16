@@ -220,3 +220,19 @@ def test_signing_key_mismatch_fails_closed(app):
         headers={"X-CampPhoto-Client": "desktop-v1"},
     )
     assert response.status_code == 503
+
+
+def test_activation_creation_is_rate_limited(app):
+    client = app.test_client()
+    headers = {"X-CampPhoto-Client": "desktop-v1"}
+    for _ in range(5):
+        response = client.post("/api/requests", json=activation_payload(), headers=headers)
+        assert response.status_code == 200
+    blocked = client.post("/api/requests", json=activation_payload(), headers=headers)
+    assert blocked.status_code == 429
+    assert blocked.get_json()["ok"] is False
+
+
+def test_health_reports_frozen_version(app):
+    data = app.test_client().get("/health").get_json()
+    assert data["version"] == "1.0.0"
