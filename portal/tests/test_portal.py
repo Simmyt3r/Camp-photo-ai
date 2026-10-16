@@ -2,6 +2,7 @@ import base64
 import hashlib
 from pathlib import Path
 
+import bcrypt
 import pytest
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
@@ -280,3 +281,93 @@ def test_activation_page_links_user_tutorial(app):
     assert response.status_code == 200
     assert b"Open step-by-step tutorial" in response.data
     assert b"/guide" in response.data
+
+
+def test_bcrypt_admin_hash_is_supported(app):
+    client = app.test_client()
+    bcrypt_hash = bcrypt.hashpw(
+        b"correct horse battery staple",
+        bcrypt.gensalt(rounds=4),
+    ).decode("utf-8")
+    app.config["ADMIN_PASSWORD_HASH"] = bcrypt_hash
+
+    client.get("/admin/login")
+    with client.session_transaction() as sess:
+        token = sess["_csrf"]
+
+    response = client.post(
+        "/admin/login",
+        data={
+            "_csrf": token,
+            "email": "admin@example.com",
+            "password": "correct horse battery staple",
+        },
+        follow_redirects=False,
+    )
+    assert response.status_code == 302
+    assert response.headers["Location"].endswith("/admin/")
+
+
+def test_wrong_bcrypt_password_is_rejected_without_500(app):
+    client = app.test_client()
+    app.config["ADMIN_PASSWORD_HASH"] = bcrypt.hashpw(
+        b"correct password",
+        bcrypt.gensalt(rounds=4),
+    ).decode("utf-8")
+
+    client.get("/admin/login")
+    with client.session_transaction() as sess:
+        token = sess["_csrf"]
+
+    response = client.post(
+        "/admin/login",
+        data={
+            "_csrf": token,
+            "email": "admin@example.com",
+            "password": "wrong password",
+        },
+        follow_redirects=True,
+    )
+    assert response.status_code == 200
+    assert b"Invalid admin credentials" in response.data
+
+
+def test_malformed_admin_hash_fails_closed_without_500(app):
+    client = app.test_client()
+    app.config["ADMIN_PASSWORD_HASH"] = "$2b$broken"
+
+    client.get("/admin/login")
+    with client.session_transaction() as sess:
+        token = sess["_csrf"]
+
+    response = client.post(
+        "/admin/login",
+        data={
+            "_csrf": token,
+            "email": "admin@example.com",
+            "password": "anything",
+        },
+        follow_redirects=True,
+    )
+    assert response.status_code == 200
+    assert b"Invalid admin credentials" in response.data
+
+
+def test_werkzeug_admin_hash_still_works(app):
+    client = app.test_client()
+
+    client.get("/admin/login")
+    with client.session_transaction() as sess:
+        token = sess["_csrf"]
+
+    response = client.post(
+        "/admin/login",
+        data={
+            "_csrf": token,
+            "email": "admin@example.com",
+            "password": "correct horse battery staple",
+        },
+        follow_redirects=False,
+    )
+    assert response.status_code == 302
+    assert response.headers["Location"].endswith("/admin/")
