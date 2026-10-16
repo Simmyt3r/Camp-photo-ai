@@ -9,7 +9,18 @@
 <body>
   <header class="site-header">
     <div><a class="brand" href="{{ url_for('home') }}">CampPhoto AI</a><span class="muted">Licensing Portal</span></div>
-    <div class="header-right">Simeon's Laboratories And Co Technologies Ltd</div>
+    <div class="header-right">
+      <span class="company-name">Simeon's Laboratories And Co Technologies Ltd</span>
+      <nav class="header-nav">
+        <a href="{{ url_for('user_guide') }}">User Guide</a>
+        {% if session.get("admin_authenticated") %}
+          <a href="{{ url_for('admin_guide') }}">Admin Guide</a>
+          <a href="{{ url_for('admin_dashboard') }}">Dashboard</a>
+        {% else %}
+          <a href="{{ url_for('admin_login') }}">Admin</a>
+        {% endif %}
+      </nav>
+    </div>
   </header>
   <main class="container">
     {% with messages = get_flashed_messages(with_categories=true) %}

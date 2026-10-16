@@ -1,0 +1,130 @@
+{% extends "base.html" %}
+{% block title %}Admin Guide • CampPhoto AI{% endblock %}
+{% block content %}
+<section class="page-heading">
+  <div>
+    <div class="eyebrow">ADMIN TUTORIAL</div>
+    <h1>Operate the CampPhoto AI licensing portal</h1>
+    <p>This guide covers production setup, payment review, licence administration, and the frozen v1 operating rules.</p>
+  </div>
+  <a class="button secondary" href="{{ url_for('admin_dashboard') }}">Back to dashboard</a>
+</section>
+
+<section class="notice warning">
+  <strong>Critical rule:</strong> never paste, send, email, or commit the CampPhoto AI private signing key. Customers only receive <code>.cpa-license</code> files.
+</section>
+
+<div class="guide-list">
+  <section class="guide-step card">
+    <div class="guide-number">1</div>
+    <div>
+      <h2>Complete production configuration</h2>
+      <p>In Vercel Environment Variables, confirm these are present:</p>
+      <div class="env-list">
+        <code>DATABASE_URL</code>
+        <code>PAYSTACK_SECRET_KEY</code>
+        <code>CAMPPHOTO_LICENSE_PRIVATE_KEY_B64</code>
+        <code>APP_BASE_URL</code>
+        <code>FLASK_SECRET_KEY</code>
+        <code>ADMIN_EMAIL</code>
+        <code>ADMIN_PASSWORD_HASH</code>
+      </div>
+      <p>The signing key must be the same key pair whose public key is bundled with the Windows application. The portal refuses to issue licences if the fingerprint does not match.</p>
+    </div>
+  </section>
+
+  <section class="guide-step card">
+    <div class="guide-number">2</div>
+    <div>
+      <h2>Configure Paystack safely</h2>
+      <p>Start with a Paystack <strong>test</strong> secret key. Configure the webhook endpoint as:</p>
+      <code class="code-block">{{ config["APP_BASE_URL"] }}/webhooks/paystack</code>
+      <p>Run a complete test payment before switching to a live secret. The portal verifies amount, currency, reference, activation token, Device ID, and customer email before issuing a licence.</p>
+    </div>
+  </section>
+
+  <section class="guide-step card">
+    <div class="guide-number">3</div>
+    <div>
+      <h2>Use the dashboard</h2>
+      <p>The dashboard shows recent activation requests and their current state:</p>
+      <ul>
+        <li><strong>Pending:</strong> request/payment has not completed.</li>
+        <li><strong>Licensed:</strong> payment was verified and a signed licence exists.</li>
+        <li><strong>Revoked:</strong> server-side entitlement has been disabled.</li>
+      </ul>
+      <p>Select <strong>Open</strong> beside a request to see customer details, payment reference, licence ID, expiry date, and audit history.</p>
+    </div>
+  </section>
+
+  <section class="guide-step card">
+    <div class="guide-number">4</div>
+    <div>
+      <h2>Use manual approval only as a fallback</h2>
+      <p>Manual approval is for verified bank/payment situations where automatic Paystack confirmation cannot be used.</p>
+      <ol>
+        <li>Confirm the money in the actual company account.</li>
+        <li>Open the activation request.</li>
+        <li>Enter the verified payment reference.</li>
+        <li>Select <strong>Manually verify & issue</strong>.</li>
+      </ol>
+      <div class="notice warning">A screenshot, SMS, or customer's claim is not payment verification. The portal also prevents one payment reference from being reused for another activation.</div>
+    </div>
+  </section>
+
+  <section class="guide-step card">
+    <div class="guide-number">5</div>
+    <div>
+      <h2>Reissue a licence carefully</h2>
+      <p>Reissue creates a new signed licence for the same activation record. Use it for a legitimate recovery case, not as the first response to a new computer.</p>
+      <p>If the Device ID has changed, review the case first. The licence is intentionally device-bound.</p>
+    </div>
+  </section>
+
+  <section class="guide-step card">
+    <div class="guide-number">6</div>
+    <div>
+      <h2>Understand revocation</h2>
+      <p>Revoking an entitlement blocks future portal downloads and reissues.</p>
+      <div class="notice warning">Because CampPhoto AI is designed to work offline, a licence already imported into a disconnected computer remains valid until its signed expiry date. The portal cannot remotely erase an offline licence.</div>
+    </div>
+  </section>
+
+  <section class="guide-step card">
+    <div class="guide-number">7</div>
+    <div>
+      <h2>Use the audit trail before making decisions</h2>
+      <p>The activation detail page records important actions such as payment initialization, payment verification, licence issuance, manual approval, reissue, and revocation. Review this history before correcting or overriding an entitlement.</p>
+    </div>
+  </section>
+</div>
+
+<section class="card">
+  <h2>Daily admin checklist</h2>
+  <div class="checklist">
+    <div class="ok">Confirm the portal loads and /health reports the required configuration as ready.</div>
+    <div class="ok">Review pending activations before manually intervening.</div>
+    <div class="ok">Match payment references against Paystack or the company account.</div>
+    <div class="ok">Use the audit trail before reissue or revocation.</div>
+    <div class="ok">Keep the signing key and Paystack secret only in protected server environment variables.</div>
+  </div>
+</section>
+
+<section class="card">
+  <h2>Frozen v1 rules</h2>
+  <p>The v1 portal is frozen around one commercial flow: <strong>₦{{ "{:,}".format(activation_fee_ngn) }} payment → verified entitlement → signed device-bound licence → offline CampPhoto AI use.</strong></p>
+  <p>Do not alter the signing key, payment amount, licence format, verification rules, or device-binding model casually. Those changes require a coordinated release.</p>
+</section>
+
+<section class="card soft">
+  <h2>When something fails</h2>
+  <ol class="steps">
+    <li>Check the activation's audit trail.</li>
+    <li>Confirm Paystack/reference status independently.</li>
+    <li>Check the Vercel health/configuration status.</li>
+    <li>Check database availability.</li>
+    <li>Only use manual approval after actual payment confirmation.</li>
+  </ol>
+  <p class="muted small">Silabs support contact shown to customers: {{ config["SUPPORT_PHONE"] }} • {{ config["SUPPORT_EMAIL"] }}</p>
+</section>
+{% endblock %}

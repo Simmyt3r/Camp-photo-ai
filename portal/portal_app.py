@@ -511,6 +511,10 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
     def home():
         return render_template("index.html", config=_configuration(app), prefill_device=request.args.get("device_id", ""))
 
+    @app.get("/guide")
+    def user_guide():
+        return render_template("user_guide.html")
+
     @app.post("/activate")
     def activate():
         check_csrf()
@@ -781,6 +785,11 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
         check_csrf()
         session.clear()
         return redirect(url_for("admin_login"))
+
+    @app.get("/admin/guide")
+    @admin_required
+    def admin_guide():
+        return render_template("admin_guide.html")
 
     @app.get("/admin/")
     @admin_required

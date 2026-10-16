@@ -1,0 +1,120 @@
+{% extends "base.html" %}
+{% block title %}User Guide • CampPhoto AI{% endblock %}
+{% block content %}
+<section class="page-heading">
+  <div>
+    <div class="eyebrow">USER TUTORIAL</div>
+    <h1>Activate CampPhoto AI in a few steps</h1>
+    <p>This guide is for camp operators and other customers activating the Windows application.</p>
+  </div>
+  <a class="button secondary" href="{{ url_for('home') }}">Back to activation</a>
+</section>
+
+<section class="guide-progress card soft">
+  <strong>Before you start</strong>
+  <p>Have CampPhoto AI open on the computer you want to activate. You will need its Device ID, your camp details, an email address, and access to Paystack checkout.</p>
+</section>
+
+<div class="guide-list">
+  <section class="guide-step card">
+    <div class="guide-number">1</div>
+    <div>
+      <h2>Find the Device ID</h2>
+      <p>Open CampPhoto AI. On the activation screen, copy the Device ID. It looks like:</p>
+      <code class="code-block">CPA-1111-2222-3333-4444</code>
+      <p class="muted small">The licence is tied to this computer. Do not enter a Device ID copied from another machine.</p>
+    </div>
+  </section>
+
+  <section class="guide-step card">
+    <div class="guide-number">2</div>
+    <div>
+      <h2>Enter the camp details</h2>
+      <p>Return to the portal activation page and complete:</p>
+      <ul>
+        <li>Device ID</li>
+        <li>Camp name and state</li>
+        <li>Batch / Stream</li>
+        <li>Contact person's name</li>
+        <li>Email address and optional phone number</li>
+      </ul>
+      <p>Check the Device ID carefully before continuing. A licence generated for the wrong device will not activate another computer.</p>
+    </div>
+  </section>
+
+  <section class="guide-step card">
+    <div class="guide-number">3</div>
+    <div>
+      <h2>Pay the ₦{{ "{:,}".format(activation_fee_ngn) }} activation fee</h2>
+      <p>Select <strong>Pay ₦{{ "{:,}".format(activation_fee_ngn) }} securely</strong>. You will be sent to Paystack to complete payment.</p>
+      <div class="notice warning">Do not pay anyone who asks you to bypass the portal or send your card details directly. CampPhoto AI does not need your card number inside the application.</div>
+    </div>
+  </section>
+
+  <section class="guide-step card">
+    <div class="guide-number">4</div>
+    <div>
+      <h2>Return to the activation status page</h2>
+      <p>After checkout, Paystack returns you to the portal. The portal independently verifies the transaction before issuing a licence.</p>
+      <p>If payment is still processing, use <strong>Check payment again</strong>. Repeated clicking does not create extra licences for the same activation.</p>
+    </div>
+  </section>
+
+  <section class="guide-step card">
+    <div class="guide-number">5</div>
+    <div>
+      <h2>Download the licence file</h2>
+      <p>When the status becomes <strong>Licensed</strong>, select <strong>Download .cpa-license</strong>. Keep the file safe until it has been imported into CampPhoto AI.</p>
+      <p class="muted small">The licence file is not your payment receipt and it is not a password. It is a digitally signed permission file for your registered device.</p>
+    </div>
+  </section>
+
+  <section class="guide-step card">
+    <div class="guide-number">6</div>
+    <div>
+      <h2>Import the licence into CampPhoto AI</h2>
+      <p>Return to the Windows application, choose <strong>Import .cpa-license</strong>, select the file you downloaded, and wait for the activation-success message.</p>
+      <p>Once accepted, normal CampPhoto AI operation can continue offline until the licence expires.</p>
+    </div>
+  </section>
+</div>
+
+<section class="card">
+  <h2>What the status labels mean</h2>
+  <div class="guide-status-grid">
+    <div><span class="badge created">created</span><p>Your activation request exists, but checkout has not completed.</p></div>
+    <div><span class="badge payment_initialized">payment initialized</span><p>A Paystack payment session has been created.</p></div>
+    <div><span class="badge paid">paid</span><p>Payment has been verified and licence issuance is completing.</p></div>
+    <div><span class="badge licensed">licensed</span><p>Your signed licence is ready to download.</p></div>
+    <div><span class="badge revoked">revoked</span><p>The portal entitlement has been disabled by Silabs. Contact support.</p></div>
+  </div>
+</section>
+
+<section class="card">
+  <h2>Common problems</h2>
+  <div class="faq">
+    <details open>
+      <summary>Payment succeeded but the licence is not ready</summary>
+      <p>Use <strong>Check payment again</strong>. If Paystack has confirmed the transaction but the status does not change, contact Silabs with the payment reference shown on the status page.</p>
+    </details>
+    <details>
+      <summary>The licence says it belongs to another device</summary>
+      <p>Confirm that the Device ID on the portal matches the Device ID shown by the CampPhoto AI installation you are trying to activate.</p>
+    </details>
+    <details>
+      <summary>The computer was replaced or failed</summary>
+      <p>Contact Silabs. A replacement computer has a different Device ID, so an administrator must review the existing entitlement before a replacement licence is issued.</p>
+    </details>
+    <details>
+      <summary>I lost the licence file</summary>
+      <p>If the portal entitlement is still valid, Silabs can help you recover or reissue the licence. Do not share the licence publicly.</p>
+    </details>
+  </div>
+</section>
+
+<section class="card soft">
+  <h2>Need help?</h2>
+  <p>Silabs support: <strong>{{ config["SUPPORT_PHONE"] }}</strong> • <strong>{{ config["SUPPORT_EMAIL"] }}</strong></p>
+  <a class="button primary" href="{{ url_for('home') }}">Start activation</a>
+</section>
+{% endblock %}

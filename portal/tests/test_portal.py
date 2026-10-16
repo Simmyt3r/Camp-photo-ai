@@ -247,3 +247,36 @@ def test_pinned_fingerprint_matches_desktop_public_key():
         serialization.PublicFormat.SubjectPublicKeyInfo,
     )
     assert hashlib.sha256(public_der).hexdigest() == portal_app.EXPECTED_LICENSE_PUBLIC_KEY_SHA256
+
+
+def test_user_tutorial_is_public(app):
+    client = app.test_client()
+    response = client.get("/guide")
+    assert response.status_code == 200
+    assert b"Activate CampPhoto AI in a few steps" in response.data
+    assert b"Download .cpa-license" in response.data
+
+
+def test_admin_tutorial_requires_admin_session(app):
+    client = app.test_client()
+    response = client.get("/admin/guide")
+    assert response.status_code == 302
+    assert "/admin/login" in response.headers["Location"]
+
+
+def test_admin_tutorial_loads_for_authenticated_admin(app):
+    client = app.test_client()
+    with client.session_transaction() as sess:
+        sess["admin_authenticated"] = True
+        sess["admin_email"] = "admin@example.com"
+    response = client.get("/admin/guide")
+    assert response.status_code == 200
+    assert b"Operate the CampPhoto AI licensing portal" in response.data
+    assert b"never paste, send, email, or commit" in response.data
+
+
+def test_activation_page_links_user_tutorial(app):
+    response = app.test_client().get("/")
+    assert response.status_code == 200
+    assert b"Open step-by-step tutorial" in response.data
+    assert b"/guide" in response.data
