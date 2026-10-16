@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block title %}Portal setup required{% endblock %}
+{% block content %}
+<section class="card narrow">
+  <div class="eyebrow">SETUP REQUIRED</div><h1>Finish the production configuration</h1><p>{{ message }}</p>
+  <div class="checklist">
+    <div class="{{ 'ok' if config.database else 'missing' }}">DATABASE_URL</div>
+    <div class="{{ 'ok' if config.paystack else 'missing' }}">PAYSTACK_SECRET_KEY</div>
+    <div class="{{ 'ok' if config.signing_key else 'missing' }}">CAMPPHOTO_LICENSE_PRIVATE_KEY_B64</div>
+    <div class="{{ 'ok' if config.app_url else 'missing' }}">APP_BASE_URL</div>
+    <div class="{{ 'ok' if config.flask_secret else 'missing' }}">FLASK_SECRET_KEY</div>
+    <div class="{{ 'ok' if config.admin else 'missing' }}">ADMIN_EMAIL + ADMIN_PASSWORD_HASH</div>
+  </div>
+  <p class="muted small">Secrets belong in Vercel Environment Variables, never in Git.</p>
+</section>
+{% endblock %}
