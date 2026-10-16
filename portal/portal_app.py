@@ -227,7 +227,7 @@ def _check_admin_password(stored_hash: str, password: str) -> bool:
                 stored_hash.encode("utf-8"),
             )
         return check_password_hash(stored_hash, password)
-    except (ValueError, TypeError, bcrypt.error):
+    except (ValueError, TypeError):
         return False
 
 
@@ -786,11 +786,12 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
                     limit=10,
                     window_minutes=15,
                 )
-            password_ok = _check_admin_password(
+            email_ok = hmac.compare_digest(email, app.config["ADMIN_EMAIL"])
+            password_ok = email_ok and _check_admin_password(
                 app.config["ADMIN_PASSWORD_HASH"],
                 password,
             )
-            if hmac.compare_digest(email, app.config["ADMIN_EMAIL"]) and password_ok:
+            if email_ok and password_ok:
                 session.clear()
                 session.permanent = True
                 session["admin_authenticated"] = True
