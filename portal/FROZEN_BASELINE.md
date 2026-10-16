@@ -63,6 +63,7 @@ Accept only:
 - dependency/provider compatibility fixes;
 - operational configuration changes;
 - test coverage;
-- logging/observability that does not alter the entitlement model.
+- logging/observability that does not alter the entitlement model;
+- user/admin documentation and tutorials that do not alter payment, entitlement, signing, or device-binding behavior.
 
 Anything else belongs in a later version and should not be slipped into v1.0.0 because software has suffered enough from "one tiny feature before release."
