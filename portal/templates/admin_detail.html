@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% block title %}Activation {{ item.id }}{% endblock %}
+{% block content %}
+<a class="back" href="{{ url_for('admin_dashboard') }}">← Back to activations</a>
+<section class="page-heading">
+  <div><div class="eyebrow">ACTIVATION #{{ item.id }}</div><h1>{{ item.camp_name }}</h1><p>{{ item.state }} • {{ item.batch_stream }}</p></div>
+  <span class="badge {{ item.status }}">{{ item.status.replace("_", " ") }}</span>
+</section>
+<div class="grid two">
+  <section class="card">
+    <h2>Customer & device</h2>
+    <dl>
+      <dt>Device</dt><dd><code>{{ item.device_id }}</code></dd>
+      <dt>Contact</dt><dd>{{ item.contact_name }}</dd>
+      <dt>Email</dt><dd>{{ item.email }}</dd>
+      <dt>Phone</dt><dd>{{ item.phone or "—" }}</dd>
+    </dl>
+  </section>
+  <section class="card">
+    <h2>Payment & licence</h2>
+    <dl>
+      <dt>Fee</dt><dd>₦{{ "{:,}".format(item.amount_ngn) }}</dd>
+      <dt>Reference</dt><dd>{{ item.payment_reference or "—" }}</dd>
+      <dt>Paystack</dt><dd>{{ item.paystack_status or "—" }}</dd>
+      <dt>Licence</dt><dd>{{ item.license_id or "Not issued" }}</dd>
+      <dt>Expiry</dt><dd>{{ item.expires_on or "—" }}</dd>
+    </dl>
+    {% if item.status == "licensed" %}
+      <a class="button secondary" href="{{ url_for('download_license', token=item.public_token) }}">Download licence</a>
+    {% endif %}
+  </section>
+</div>
+<section class="card">
+  <h2>Admin actions</h2>
+  {% if item.status not in ["licensed", "revoked"] %}
+  <form method="post" action="{{ url_for('admin_manual_approve', item_id=item.id) }}" class="inline-form">
+    <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+    <input name="payment_reference" value="{{ item.payment_reference or '' }}" placeholder="Verified bank/payment reference" required>
+    <button class="primary" type="submit">Manually verify & issue</button>
+  </form>
+  {% endif %}
+  {% if item.status == "licensed" %}
+  <div class="actions">
+    <form method="post" action="{{ url_for('admin_reissue', item_id=item.id) }}">
+      <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+      <button class="secondary" type="submit">Reissue licence</button>
+    </form>
+    <form method="post" action="{{ url_for('admin_revoke', item_id=item.id) }}" onsubmit="return confirm('Revoke this server-side entitlement? Existing offline licences remain usable until expiry.')">
+      <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+      <button class="danger" type="submit">Revoke entitlement</button>
+    </form>
+  </div>
+  <p class="muted small">Revocation blocks portal access and future reissues. A licence already imported into an offline desktop cannot be remotely disabled before its signed expiry date.</p>
+  {% endif %}
+</section>
+<section class="card">
+  <h2>Audit trail</h2>
+  <div class="timeline">
+  {% for event in events %}
+    <div><strong>{{ event.event }}</strong><span>{{ event.created_at.strftime("%Y-%m-%d %H:%M:%S") }}</span><p>{{ event.detail }}</p></div>
+  {% else %}
+    <p>No audit events recorded.</p>
+  {% endfor %}
+  </div>
+</section>
+{% endblock %}
